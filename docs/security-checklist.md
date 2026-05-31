@@ -1,0 +1,38 @@
+# Security Checklist
+
+- [x] Tokens use CSPRNG through `rand::thread_rng`
+- [x] Token has at least 128 bits of entropy
+- [x] Tokens are URL-safe with base64url and no padding
+- [x] Tokens expire after 10 minutes
+- [x] Tokens are single-use by default
+- [x] Tokens are stored in memory only
+- [x] No file path in any URL parameter
+- [x] No directory listing route
+- [x] No upload endpoints
+- [x] Filename sanitized for traversal, CRLF, control chars, and quotes
+- [x] Header-safe filename prevents CRLF injection in `Content-Disposition`
+- [x] All dynamic HTML content escaped with `escape_html()`
+- [x] Content-Security-Policy on mobile page
+- [x] X-Content-Type-Options: nosniff on all responses
+- [x] X-Frame-Options: DENY on HTML responses
+- [x] Referrer-Policy: no-referrer on all responses
+- [x] Permissions-Policy: camera=(), microphone=(), geolocation=()
+- [x] Cache-Control: no-store on all responses
+- [x] No cookies set
+- [x] Mobile page has no external CDN dependencies
+- [x] Mobile page has no analytics
+- [x] Mobile page has no external fonts
+- [x] Local network warning shown in desktop UI
+- [x] LAN IP detection excludes loopback and virtual adapters heuristically
+- [x] Server binds to LAN IP by default, not 0.0.0.0
+- [x] Tauri capabilities are minimal
+- [x] Tauri CSP configured in `tauri.conf.json`
+- [x] Cargo.lock committed after dependency installation
+- [x] package-lock.json committed after dependency installation
+- [x] Logs never contain full token values
+- [x] Logs never contain absolute file paths
+- [x] Per-IP rate limiting for invalid token attempts
+- [x] No telemetry, no phone-home, no update checks
+- [ ] Not implemented - HTTPS / local TLS is planned for roadmap v0.4
+- [ ] Not implemented - PC approval before download is planned for roadmap v0.2
+- [ ] Not implemented - Trusted device list is planned for roadmap v0.4

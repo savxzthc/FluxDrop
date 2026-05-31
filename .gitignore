@@ -1,0 +1,13 @@
+target/
+node_modules/
+dist/
+.DS_Store
+Thumbs.db
+*.pdb
+*.log
+.env
+.env.local
+project-instructions.md
+src-tauri/WixTools/
+src-tauri/gen/
+*.orig

@@ -1,0 +1,407 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #111827;
+  background: #eef1f4;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --ink: #111827;
+  --muted: #5f6b7a;
+  --line: #d4dae2;
+  --panel: #ffffff;
+  --panel-soft: #f8fafc;
+  --blue: #1d4ed8;
+  --green: #047857;
+  --amber: #b45309;
+  --red: #b42318;
+  --shadow: 0 22px 70px rgba(15, 23, 42, 0.13);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 760px;
+  min-height: 100vh;
+}
+
+button {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.app-shell {
+  width: min(1180px, calc(100vw - 48px));
+  margin: 0 auto;
+  padding: 38px 0;
+}
+
+.home-shell {
+  min-height: 100vh;
+  display: grid;
+  align-content: center;
+  gap: 26px;
+}
+
+.brand-block {
+  max-width: 680px;
+}
+
+.brand-mark {
+  margin: 0 0 12px;
+  font-size: 2rem;
+  font-weight: 850;
+  color: var(--ink);
+}
+
+.brand-mark.compact {
+  font-size: 1.35rem;
+  margin-bottom: 6px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 3rem;
+  line-height: 1.05;
+  font-weight: 850;
+  letter-spacing: 0;
+}
+
+.brand-block p:not(.brand-mark),
+.panel p,
+.footer-note,
+.drop-copy {
+  color: var(--muted);
+}
+
+.brand-block p:not(.brand-mark) {
+  font-size: 1.08rem;
+  line-height: 1.65;
+  max-width: 620px;
+}
+
+.drop-zone {
+  min-height: 290px;
+  border: 2px dashed #9aa8b8;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: var(--shadow);
+  display: grid;
+  place-items: center;
+  gap: 18px;
+  text-align: center;
+  padding: 36px;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.drop-zone-active {
+  border-color: var(--green);
+  background: #eefaf5;
+  transform: translateY(-1px);
+}
+
+.drop-title {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 800;
+}
+
+.drop-copy {
+  margin: 8px 0 0;
+}
+
+.primary-button,
+.secondary-button,
+.subtle-button,
+.danger-button {
+  min-height: 42px;
+  border-radius: 7px;
+  padding: 0 18px;
+  font-weight: 750;
+}
+
+.primary-button {
+  background: var(--ink);
+  color: white;
+}
+
+.secondary-button {
+  background: var(--blue);
+  color: white;
+}
+
+.subtle-button {
+  background: #edf1f5;
+  color: var(--ink);
+}
+
+.danger-button {
+  background: #fff1f0;
+  color: var(--red);
+  border: 1px solid #f4b9b4;
+}
+
+.inline-error {
+  margin: 0;
+  color: var(--red);
+  font-weight: 700;
+}
+
+.preparing-note {
+  margin: 0;
+  color: var(--blue);
+  font-weight: 750;
+}
+
+.footer-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: space-between;
+  font-size: 0.95rem;
+}
+
+.top-bar {
+  margin-bottom: 20px;
+}
+
+.top-bar h1 {
+  font-size: 2rem;
+}
+
+.send-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 390px;
+  gap: 20px;
+  align-items: start;
+}
+
+.left-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.06);
+}
+
+.panel-heading,
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+}
+
+.eyebrow {
+  display: block;
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.file-name {
+  margin: 12px 0 16px;
+  font-size: 1.35rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.meta-grid,
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+dt {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+dd {
+  margin: 4px 0 0;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.qr-panel {
+  position: sticky;
+  top: 24px;
+  text-align: center;
+}
+
+.qr-code {
+  width: min(100%, 360px);
+  aspect-ratio: 1;
+  margin: 16px auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: #fff;
+}
+
+.qr-code svg {
+  width: 92%;
+  height: 92%;
+}
+
+.download-url {
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+  padding: 12px;
+  background: var(--panel-soft);
+  border-radius: 6px;
+}
+
+.status-panel h2 {
+  margin: 8px 0 0;
+  font-size: 1.35rem;
+}
+
+.status-pill {
+  border-radius: 999px;
+  padding: 7px 11px;
+  font-weight: 850;
+  background: #e5e7eb;
+}
+
+.tone-ready .status-pill {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.tone-connected .status-pill,
+.tone-done .status-pill {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.tone-working .status-pill {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.tone-error .status-pill {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.progress-wrap {
+  margin: 18px 0;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 12px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #e5e7eb;
+}
+
+.progress-bar span {
+  display: block;
+  height: 100%;
+  background: var(--green);
+  transition: width 160ms linear;
+}
+
+.progress-stats {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.request-note {
+  margin-bottom: 0;
+  padding: 12px;
+  background: var(--panel-soft);
+  border-radius: 6px;
+}
+
+.countdown {
+  margin: 14px 0 6px;
+  font-size: 2rem;
+  font-weight: 850;
+  color: var(--green);
+}
+
+.expiry-warning .countdown {
+  color: var(--red);
+}
+
+.help-panel summary {
+  cursor: pointer;
+  font-weight: 850;
+}
+
+.help-content {
+  margin-top: 16px;
+}
+
+.address-list {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0;
+  display: grid;
+  gap: 10px;
+}
+
+.address-list li {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-soft);
+}
+
+.address-list span,
+.address-list em {
+  color: var(--muted);
+  font-style: normal;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 900px) {
+  body {
+    min-width: 0;
+  }
+
+  .app-shell {
+    width: min(100vw - 28px, 680px);
+    padding: 22px 0;
+  }
+
+  h1 {
+    font-size: 2.25rem;
+  }
+
+  .send-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .qr-panel {
+    position: static;
+    order: -1;
+  }
+
+  .meta-grid,
+  .status-grid {
+    grid-template-columns: 1fr;
+  }
+}
