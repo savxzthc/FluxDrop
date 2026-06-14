@@ -72,6 +72,17 @@ pub fn preferred_ip_address(addresses: &[NetworkAddress]) -> IpAddr {
         .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST))
 }
 
+pub fn configured_ip_address(addresses: &[NetworkAddress], configured_ip: Option<&str>) -> IpAddr {
+    configured_ip
+        .and_then(|configured| {
+            addresses
+                .iter()
+                .find(|address| address.ip == configured)
+                .and_then(|address| address.ip.parse::<IpAddr>().ok())
+        })
+        .unwrap_or_else(|| preferred_ip_address(addresses))
+}
+
 pub fn select_available_port(ip: IpAddr, preferred_port: u16) -> std::io::Result<u16> {
     for port in preferred_port..preferred_port.saturating_add(50) {
         if TcpListener::bind(SocketAddr::new(ip, port)).is_ok() {
@@ -107,5 +118,27 @@ mod tests {
         let occupied = listener.local_addr().expect("local addr").port();
         let selected = select_available_port(ip, occupied).expect("select fallback port");
         assert_ne!(selected, occupied);
+    }
+
+    #[test]
+    fn test_configured_private_address_overrides_heuristic() {
+        let addresses = vec![
+            NetworkAddress {
+                interface_name: "Ethernet".into(),
+                ip: "192.168.1.5".into(),
+                preferred: true,
+                reason: "preferred".into(),
+            },
+            NetworkAddress {
+                interface_name: "VPN".into(),
+                ip: "10.0.0.5".into(),
+                preferred: false,
+                reason: "virtual".into(),
+            },
+        ];
+        assert_eq!(
+            configured_ip_address(&addresses, Some("10.0.0.5")),
+            "10.0.0.5".parse::<IpAddr>().expect("ip")
+        );
     }
 }

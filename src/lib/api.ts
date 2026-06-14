@@ -10,6 +10,7 @@ export type ShareStatus =
   | { kind: "Approved" }
   | { kind: "Denied" }
   | { kind: "Downloading" }
+  | { kind: "Uploading" }
   | { kind: "Completed" }
   | { kind: "Expired" }
   | { kind: "Cancelled" }
@@ -22,6 +23,8 @@ export interface ShareInfo {
   file_size: number;
   file_size_human: string;
   mime_type: string;
+  file_count: number;
+  is_archive: boolean;
   download_url: string;
   qr_svg: string;
   expires_at: string;
@@ -35,6 +38,8 @@ export interface ShareStatusInfo {
   file_size: number;
   file_size_human: string;
   mime_type: string;
+  file_count: number;
+  is_archive: boolean;
   status: ShareStatus;
   bytes_sent: number;
   progress_percent: number;
@@ -43,6 +48,8 @@ export interface ShareStatusInfo {
   download_started_at: string | null;
   download_finished_at: string | null;
   client_ip: string | null;
+  approval_deadline: string | null;
+  approval_timed_out: boolean;
   local_address: string | null;
   last_request_status: string | null;
 }
@@ -54,8 +61,55 @@ export interface NetworkAddress {
   reason: string;
 }
 
-export function createShare(filePath: string): Promise<ShareInfo> {
-  return invoke("create_share", { filePath });
+export interface ReceiveInfo {
+  id: string;
+  token: string;
+  upload_url: string;
+  qr_svg: string;
+  destination_folder_name: string;
+  expires_at: string;
+  local_ip: string;
+  port: number;
+  max_upload_bytes: number;
+  max_upload_size_human: string;
+  status: ShareStatus;
+}
+
+export interface ReceiveStatusInfo {
+  file_name: string | null;
+  file_size: number | null;
+  file_size_human: string | null;
+  mime_type: string | null;
+  status: ShareStatus;
+  bytes_received: number;
+  progress_percent: number;
+  created_at: string;
+  expires_at: string;
+  approval_deadline: string | null;
+  approval_timed_out: boolean;
+  client_ip: string | null;
+  local_address: string | null;
+  destination_folder_name: string;
+  last_request_status: string | null;
+}
+
+export interface AppSettings {
+  expiration_minutes: number;
+  single_use: boolean;
+  approval_required: boolean;
+  preferred_lan_ip: string | null;
+  max_upload_bytes: number;
+  theme: "system" | "light" | "dark";
+}
+
+export interface CreateShareOptions {
+  expiration_minutes?: number;
+  single_use?: boolean;
+  approval_required?: boolean;
+}
+
+export function createShare(filePaths: string[], options?: CreateShareOptions): Promise<ShareInfo> {
+  return invoke("create_share", { filePaths, options: options ?? null });
 }
 
 export function cancelShare(): Promise<void> {
@@ -68,4 +122,40 @@ export function getShareStatus(): Promise<ShareStatusInfo | null> {
 
 export function getNetworkAddresses(): Promise<NetworkAddress[]> {
   return invoke("get_network_addresses");
+}
+
+export function approveDownload(): Promise<void> {
+  return invoke("approve_download");
+}
+
+export function denyDownload(): Promise<void> {
+  return invoke("deny_download");
+}
+
+export function getSettings(): Promise<AppSettings> {
+  return invoke("get_settings");
+}
+
+export function updateSettings(newSettings: AppSettings): Promise<AppSettings> {
+  return invoke("update_settings", { newSettings });
+}
+
+export function startReceive(destinationFolder: string): Promise<ReceiveInfo> {
+  return invoke("start_receive", { destinationFolder });
+}
+
+export function getReceiveStatus(): Promise<ReceiveStatusInfo | null> {
+  return invoke("get_receive_status");
+}
+
+export function cancelReceive(): Promise<void> {
+  return invoke("cancel_receive");
+}
+
+export function approveUpload(): Promise<void> {
+  return invoke("approve_upload");
+}
+
+export function denyUpload(): Promise<void> {
+  return invoke("deny_upload");
 }

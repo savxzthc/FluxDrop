@@ -3,12 +3,16 @@
 - [x] Tokens use CSPRNG through `rand::thread_rng`
 - [x] Token has at least 128 bits of entropy
 - [x] Tokens are URL-safe with base64url and no padding
-- [x] Tokens expire after 10 minutes
+- [x] Tokens expire after a validated 5/10/30/60-minute setting (10 minutes by default)
 - [x] Tokens are single-use by default
 - [x] Tokens are stored in memory only
 - [x] No file path in any URL parameter
 - [x] No directory listing route
-- [x] No upload endpoints
+- [x] Upload endpoints require a fresh token and exact metadata approval
+- [x] Upload size is checked from metadata, Content-Length when present, and streamed byte count
+- [x] Upload filenames are sanitized before destination path construction
+- [x] Uploads use randomized same-directory temp files and no-clobber finalization
+- [x] Partial upload files are removed on failure
 - [x] Filename sanitized for traversal, CRLF, control chars, and quotes
 - [x] Header-safe filename prevents CRLF injection in `Content-Disposition`
 - [x] All dynamic HTML content escaped with `escape_html()`
@@ -33,6 +37,12 @@
 - [x] Logs never contain absolute file paths
 - [x] Per-IP rate limiting for invalid token attempts
 - [x] No telemetry, no phone-home, no update checks
-- [ ] Not implemented - HTTPS / local TLS is planned for roadmap v0.4
-- [ ] Not implemented - PC approval before download is planned for roadmap v0.2
-- [ ] Not implemented - Trusted device list is planned for roadmap v0.4
+- [x] Token-bearing routes and file data use HTTPS with rustls
+- [x] Self-signed certificate SAN is scoped to the selected LAN IP
+- [x] Certificate rotates when the selected LAN IP changes
+- [x] HTTP onboarding page contains no token or file metadata
+- [x] Secure onboarding target is kept in the URL fragment and validated client-side
+- [x] UI and documentation disclose that self-signed TLS does not prevent active MITM
+- [x] PC approval is required by default before download
+- [x] Approval requests expire after 60 seconds
+- [ ] Deferred - opt-in mDNS and remembered devices require a browser-compatible discovery design

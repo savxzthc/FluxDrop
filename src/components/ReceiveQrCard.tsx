@@ -1,16 +1,12 @@
 import { useState } from "react";
-import type { ShareInfo } from "../lib/api";
+import type { ReceiveInfo } from "../lib/api";
 import { AppIcon } from "./AppIcon";
 
-interface QrCardProps {
-  share: ShareInfo;
-}
-
-export function QrCard({ share }: QrCardProps) {
+export function ReceiveQrCard({ receive }: { receive: ReceiveInfo }) {
   const [copied, setCopied] = useState(false);
 
   async function copyLink() {
-    await navigator.clipboard.writeText(share.download_url);
+    await navigator.clipboard.writeText(receive.upload_url);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1600);
   }
@@ -23,17 +19,17 @@ export function QrCard({ share }: QrCardProps) {
         </span>
         <div>
           <span className="eyebrow">Phone handoff</span>
-          <h2>Scan to download</h2>
+          <h2>Scan to upload</h2>
         </div>
       </div>
-      <div className="qr-code" dangerouslySetInnerHTML={{ __html: share.qr_svg }} />
+      <div className="qr-code" dangerouslySetInnerHTML={{ __html: receive.qr_svg }} />
       <div className="qr-instruction">
         <span>1</span>
-        <p>Scan with your phone camera, then approve the request on this PC.</p>
+        <p>Scan, choose a file on your phone, then approve it on this PC.</p>
       </div>
       <div className="link-row">
-        <p className="download-url">{share.download_url}</p>
-        <button className="icon-button" type="button" onClick={copyLink} aria-label="Copy download link">
+        <p className="download-url">{receive.upload_url}</p>
+        <button className="icon-button" type="button" onClick={copyLink} aria-label="Copy receive link">
           {copied ? <AppIcon name="check" size={18} /> : "Copy"}
         </button>
       </div>

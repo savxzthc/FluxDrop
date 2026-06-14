@@ -14,6 +14,7 @@ use uuid::Uuid;
 
 pub const TOKEN_BYTES: usize = 20;
 pub const TOKEN_TTL_MINUTES: i64 = 10;
+pub const APPROVAL_TIMEOUT_SECONDS: i64 = 60;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", content = "message")]
@@ -27,6 +28,7 @@ pub enum ShareStatus {
     Approved,
     Denied,
     Downloading,
+    Uploading,
     Completed,
     Expired,
     Cancelled,
@@ -34,20 +36,39 @@ pub enum ShareStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchiveEntrySource {
+    pub source_path: Option<PathBuf>,
+    pub archive_path: String,
+    pub size: u64,
+    pub is_directory: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SharePayload {
+    SingleFile { path: PathBuf },
+    ZipArchive { entries: Vec<ArchiveEntrySource> },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShareSession {
     pub id: Uuid,
     pub token: String,
-    pub file_path: PathBuf,
+    pub payload: SharePayload,
     pub safe_file_name: String,
     pub original_file_name: String,
     pub file_size: u64,
     pub mime_type: String,
+    pub file_count: usize,
+    pub is_archive: bool,
     pub created_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
     pub single_use: bool,
     pub cancelled: bool,
     pub approval_required: bool,
     pub approved: bool,
+    pub approval_requested_at: Option<DateTime<Utc>>,
+    pub approval_deadline: Option<DateTime<Utc>>,
+    pub approval_timed_out: bool,
     pub download_started_at: Option<DateTime<Utc>>,
     pub download_finished_at: Option<DateTime<Utc>>,
     pub bytes_sent: u64,
@@ -63,6 +84,8 @@ pub struct ShareInfo {
     pub file_size: u64,
     pub file_size_human: String,
     pub mime_type: String,
+    pub file_count: usize,
+    pub is_archive: bool,
     pub download_url: String,
     pub qr_svg: String,
     pub expires_at: DateTime<Utc>,
@@ -77,6 +100,8 @@ pub struct ShareStatusInfo {
     pub file_size: u64,
     pub file_size_human: String,
     pub mime_type: String,
+    pub file_count: usize,
+    pub is_archive: bool,
     pub status: ShareStatus,
     pub bytes_sent: u64,
     pub progress_percent: f64,
@@ -85,6 +110,8 @@ pub struct ShareStatusInfo {
     pub download_started_at: Option<DateTime<Utc>>,
     pub download_finished_at: Option<DateTime<Utc>>,
     pub client_ip: Option<String>,
+    pub approval_deadline: Option<DateTime<Utc>>,
+    pub approval_timed_out: bool,
     pub local_address: Option<String>,
     pub last_request_status: Option<String>,
 }
@@ -97,21 +124,76 @@ impl ShareSession {
         file_size: u64,
         mime_type: String,
     ) -> Self {
-        let now = Utc::now();
-        Self {
-            id: Uuid::new_v4(),
-            token: generate_token(),
+        Self::new_with_options(
             file_path,
             safe_file_name,
             original_file_name,
             file_size,
             mime_type,
+            TOKEN_TTL_MINUTES as u32,
+            true,
+            true,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_options(
+        file_path: PathBuf,
+        safe_file_name: String,
+        original_file_name: String,
+        file_size: u64,
+        mime_type: String,
+        expiration_minutes: u32,
+        single_use: bool,
+        approval_required: bool,
+    ) -> Self {
+        Self::new_with_payload(
+            SharePayload::SingleFile { path: file_path },
+            safe_file_name,
+            original_file_name,
+            file_size,
+            mime_type,
+            1,
+            false,
+            expiration_minutes,
+            single_use,
+            approval_required,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_payload(
+        payload: SharePayload,
+        safe_file_name: String,
+        original_file_name: String,
+        file_size: u64,
+        mime_type: String,
+        file_count: usize,
+        is_archive: bool,
+        expiration_minutes: u32,
+        single_use: bool,
+        approval_required: bool,
+    ) -> Self {
+        let now = Utc::now();
+        Self {
+            id: Uuid::new_v4(),
+            token: generate_token(),
+            payload,
+            safe_file_name,
+            original_file_name,
+            file_size,
+            mime_type,
+            file_count,
+            is_archive,
             created_at: now,
-            expires_at: now + Duration::minutes(TOKEN_TTL_MINUTES),
-            single_use: true,
+            expires_at: now + Duration::minutes(i64::from(expiration_minutes)),
+            single_use,
             cancelled: false,
-            approval_required: false,
+            approval_required,
             approved: false,
+            approval_requested_at: None,
+            approval_deadline: None,
+            approval_timed_out: false,
             download_started_at: None,
             download_finished_at: None,
             bytes_sent: 0,
@@ -140,18 +222,46 @@ impl ShareSession {
         self.status = ShareStatus::Expired;
     }
 
-    pub fn mark_phone_connected(&mut self, client_ip: IpAddr) {
+    pub fn mark_phone_connected(&mut self, client_ip: IpAddr) -> bool {
         self.client_ip = Some(client_ip);
-        if !matches!(
+        if matches!(
             self.status,
-            ShareStatus::Downloading | ShareStatus::Completed
+            ShareStatus::Approved
+                | ShareStatus::Denied
+                | ShareStatus::Downloading
+                | ShareStatus::Completed
+                | ShareStatus::Expired
+                | ShareStatus::Cancelled
+                | ShareStatus::Error(_)
         ) {
-            self.status = if self.approval_required {
-                ShareStatus::AwaitingApproval
-            } else {
-                ShareStatus::PhoneConnected
-            };
+            return false;
         }
+
+        if self.approval_required && !self.approved {
+            if !matches!(self.status, ShareStatus::AwaitingApproval) {
+                let now = Utc::now();
+                self.status = ShareStatus::AwaitingApproval;
+                self.approval_requested_at = Some(now);
+                self.approval_deadline = Some(now + Duration::seconds(APPROVAL_TIMEOUT_SECONDS));
+                self.approval_timed_out = false;
+                return true;
+            }
+        } else {
+            self.status = ShareStatus::PhoneConnected;
+        }
+        false
+    }
+
+    pub fn approve(&mut self) {
+        self.approved = true;
+        self.approval_timed_out = false;
+        self.status = ShareStatus::Approved;
+    }
+
+    pub fn deny(&mut self, timed_out: bool) {
+        self.approved = false;
+        self.approval_timed_out = timed_out;
+        self.status = ShareStatus::Denied;
     }
 
     pub fn mark_download_started(&mut self, client_ip: IpAddr) {
@@ -190,6 +300,8 @@ impl ShareSession {
             file_size: self.file_size,
             file_size_human: format_file_size(self.file_size),
             mime_type: self.mime_type.clone(),
+            file_count: self.file_count,
+            is_archive: self.is_archive,
             status: self.status.clone(),
             bytes_sent: self.bytes_sent,
             progress_percent,
@@ -198,6 +310,8 @@ impl ShareSession {
             download_started_at: self.download_started_at,
             download_finished_at: self.download_finished_at,
             client_ip: self.client_ip.map(|ip| ip.to_string()),
+            approval_deadline: self.approval_deadline,
+            approval_timed_out: self.approval_timed_out,
             local_address,
             last_request_status,
         }
@@ -223,7 +337,7 @@ pub fn spawn_expiration_task(state: AppState, app: EventHandle) {
                     .as_ref()
                     .map(|server| server.address.to_string());
                 let last_request_status = guard.last_request_status.clone();
-                if let Some(share) = guard.current_share.as_mut() {
+                let share_expired = if let Some(share) = guard.current_share.as_mut() {
                     if share.is_expired()
                         && !matches!(
                             share.status,
@@ -231,17 +345,41 @@ pub fn spawn_expiration_task(state: AppState, app: EventHandle) {
                         )
                     {
                         share.expire();
-                        Some(share.status_info(local_address, last_request_status))
+                        Some(share.status_info(local_address.clone(), last_request_status))
                     } else {
                         None
                     }
                 } else {
                     None
-                }
+                };
+                let receive_expired = if let Some(receive) = guard.receive_session.as_mut() {
+                    if receive.is_expired()
+                        && !matches!(
+                            receive.status,
+                            ShareStatus::Expired | ShareStatus::Completed | ShareStatus::Cancelled
+                        )
+                    {
+                        receive.status = ShareStatus::Expired;
+                        Some(
+                            receive.status_info(
+                                local_address,
+                                Some("Receive link expired.".to_string()),
+                            ),
+                        )
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+                (share_expired, receive_expired)
             };
 
-            if let Some(info) = expired_info {
+            if let Some(info) = expired_info.0 {
                 events::emit_share_status(Some(&app), "share_expired", &info);
+            }
+            if let Some(info) = expired_info.1 {
+                events::emit_share_status(Some(&app), "receive_expired", &info);
             }
         }
     });
@@ -308,5 +446,73 @@ mod tests {
         );
         share.mark_download_completed();
         assert!(!share.is_valid());
+    }
+
+    #[test]
+    fn test_approval_is_required_by_default() {
+        let share = ShareSession::new(
+            PathBuf::from("file.txt"),
+            "file.txt".into(),
+            "file.txt".into(),
+            10,
+            "text/plain".into(),
+        );
+        assert!(share.approval_required);
+        assert!(!share.approved);
+    }
+
+    #[test]
+    fn test_phone_connection_requests_approval_once() {
+        let mut share = ShareSession::new(
+            PathBuf::from("file.txt"),
+            "file.txt".into(),
+            "file.txt".into(),
+            10,
+            "text/plain".into(),
+        );
+        let ip = "192.168.1.20".parse().expect("ip");
+        assert!(share.mark_phone_connected(ip));
+        assert_eq!(share.status, ShareStatus::AwaitingApproval);
+        let deadline = share.approval_deadline;
+        assert!(!share.mark_phone_connected(ip));
+        assert_eq!(share.approval_deadline, deadline);
+    }
+
+    #[test]
+    fn test_phone_refresh_does_not_overwrite_decision() {
+        let mut share = ShareSession::new(
+            PathBuf::from("file.txt"),
+            "file.txt".into(),
+            "file.txt".into(),
+            10,
+            "text/plain".into(),
+        );
+        let ip = "192.168.1.20".parse().expect("ip");
+        share.mark_phone_connected(ip);
+        share.approve();
+        assert!(!share.mark_phone_connected(ip));
+        assert_eq!(share.status, ShareStatus::Approved);
+
+        share.deny(false);
+        assert!(!share.mark_phone_connected(ip));
+        assert_eq!(share.status, ShareStatus::Denied);
+    }
+
+    #[test]
+    fn test_custom_share_defaults_are_applied() {
+        let share = ShareSession::new_with_options(
+            PathBuf::from("file.txt"),
+            "file.txt".into(),
+            "file.txt".into(),
+            10,
+            "text/plain".into(),
+            30,
+            false,
+            false,
+        );
+        assert!(!share.single_use);
+        assert!(!share.approval_required);
+        let remaining = share.expires_at - share.created_at;
+        assert_eq!(remaining.num_minutes(), 30);
     }
 }

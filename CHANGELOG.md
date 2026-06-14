@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- PC-side approval is now required by default before a phone can start a download.
+- The desktop shows the requesting phone IP, filename, size, and approve/deny actions.
+- Approval requests time out after 60 seconds with a distinct phone-facing timeout page.
+- Persisted settings for 5/10/30/60-minute expiration, single-use links, approval mode, and preferred LAN adapter.
+- Optional per-share overrides for expiration, single-use behavior, and approval mode.
+- Multi-file and folder sharing as a bounded-memory, on-the-fly ZIP stream.
+- ZIP entry path sanitization, symlink rejection, and duplicate-name disambiguation.
+- System tray lifecycle with Open, Cancel current share, and Quit actions.
+- Tray status indicators for idle, sharing, approval waiting, and active transfer states.
+- Separate phone-to-PC Receive mode with QR setup, exact file metadata approval, and desktop progress.
+- Streamed multipart uploads with configurable size limits, sanitized names, same-directory temp files, and no-clobber finalization.
+- Persisted LAN adapter override with clean listener restart and active-transfer cancellation.
+- Per-LAN-IP self-signed HTTPS for all token-bearing transfer pages, metadata, uploads, and downloads.
+- Token-safe HTTP certificate onboarding page with browser instructions and same-host HTTPS target validation.
+- Persisted System, Light, and Dark desktop themes with a header shortcut and automatic Windows appearance tracking.
+- A native-style desktop shell with dedicated Send, Receive, and Settings workspaces, persistent navigation, clearer transfer guidance, and responsive layouts.
+- Windows GUI subsystem builds in both debug and release modes so FluxDrop no longer opens a companion console window.
+
+### Security
+
+- Transfer traffic is encrypted against passive LAN observation after certificate acceptance.
+- Certificate material is persisted in the app configuration directory and regenerated when the selected LAN IP changes.
+- Documentation and UI explicitly disclose that self-signed TLS does not authenticate the PC or stop an active LAN man-in-the-middle.
+- Vite and its React plugin were upgraded to remove the audited vulnerable esbuild dependency.
+
 ## [0.1.0] - Unreleased
 
 ### Added

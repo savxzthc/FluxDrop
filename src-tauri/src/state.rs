@@ -1,7 +1,10 @@
 use crate::network::NetworkAddress;
 use crate::rate_limit::RateLimiter;
+use crate::receive::ReceiveSession;
+use crate::settings::AppSettings;
 use crate::share::ShareSession;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
@@ -19,27 +22,39 @@ pub struct AppState {
 
 pub struct RuntimeState {
     pub current_share: Option<ShareSession>,
+    pub receive_session: Option<ReceiveSession>,
     pub server: Option<ServerHandle>,
     pub rate_limiter: RateLimiter,
     pub detected_addresses: Vec<NetworkAddress>,
     pub last_request_status: Option<String>,
+    pub settings: AppSettings,
+    pub settings_path: Option<PathBuf>,
 }
 
 pub struct ServerHandle {
     pub address: SocketAddr,
+    pub onboarding_address: SocketAddr,
     pub shutdown: CancellationToken,
-    pub task: ServerTaskHandle,
+    pub task: Option<ServerTaskHandle>,
+    pub onboarding_task: Option<ServerTaskHandle>,
 }
 
 impl AppState {
     pub fn new() -> Self {
+        Self::with_settings(AppSettings::default(), None)
+    }
+
+    pub fn with_settings(settings: AppSettings, settings_path: Option<PathBuf>) -> Self {
         Self {
             inner: Arc::new(RwLock::new(RuntimeState {
                 current_share: None,
+                receive_session: None,
                 server: None,
                 rate_limiter: RateLimiter::new(20, 60),
                 detected_addresses: Vec::new(),
                 last_request_status: None,
+                settings,
+                settings_path,
             })),
         }
     }
@@ -62,5 +77,17 @@ impl Default for AppState {
 impl Drop for ServerHandle {
     fn drop(&mut self) {
         self.shutdown.cancel();
+    }
+}
+
+impl ServerHandle {
+    pub async fn stop(mut self) {
+        self.shutdown.cancel();
+        if let Some(task) = self.task.take() {
+            let _ = task.await;
+        }
+        if let Some(task) = self.onboarding_task.take() {
+            let _ = task.await;
+        }
     }
 }

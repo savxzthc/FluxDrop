@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "FluxDrop",
   "version": "0.1.0",
-  "identifier": "dev.fluxdrop.app",
+  "identifier": "dev.fluxdrop.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
@@ -14,13 +14,20 @@
     "security": {
       "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost"
     },
+    "trayIcon": {
+      "id": "main-tray",
+      "iconPath": "icons/icon.ico",
+      "iconAsTemplate": false,
+      "showMenuOnLeftClick": false,
+      "tooltip": "FluxDrop - Idle"
+    },
     "windows": [
       {
         "label": "main",
         "title": "FluxDrop",
-        "width": 1040,
-        "height": 760,
-        "minWidth": 820,
+        "width": 1180,
+        "height": 800,
+        "minWidth": 860,
         "minHeight": 640,
         "resizable": true,
         "fullscreen": false

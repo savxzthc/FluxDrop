@@ -13,6 +13,7 @@ pub type EventHandle = ();
 pub fn emit_share_status<T: Serialize>(app: Option<&EventHandle>, event: &str, payload: &T) {
     if let Some(app) = app {
         let _ = app.emit(event, payload);
+        crate::tray::update_for_event(app, event);
     }
 }
 

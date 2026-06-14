@@ -30,17 +30,19 @@ export function statusCopy(kind: string, message?: string): { label: string; det
     case "PhoneConnected":
       return { label: "Phone connected", detail: "The phone opened the download page and is ready to download.", tone: "connected" };
     case "AwaitingApproval":
-      return { label: "Awaiting approval", detail: "Approval mode is planned for v0.2; this state is handled for compatibility.", tone: "working" };
+      return { label: "Awaiting approval", detail: "The phone is waiting for an explicit decision on this PC.", tone: "working" };
     case "Approved":
       return { label: "Approved", detail: "The PC approved the phone download.", tone: "connected" };
     case "Denied":
-      return { label: "Denied", detail: "The PC denied the download request.", tone: "error" };
+      return { label: "Denied", detail: "The request was denied or timed out before approval.", tone: "error" };
     case "Downloading":
       return { label: "Downloading", detail: "The file is streaming directly from this PC to the phone.", tone: "working" };
+    case "Uploading":
+      return { label: "Uploading", detail: "The phone is streaming the approved file into a temporary file on this PC.", tone: "working" };
     case "Completed":
       return { label: "Complete", detail: "The file finished downloading and the one-time link is no longer valid.", tone: "done" };
     case "Expired":
-      return { label: "Expired", detail: "The 10-minute link window has ended.", tone: "error" };
+      return { label: "Expired", detail: "The configured link window has ended.", tone: "error" };
     case "Cancelled":
       return { label: "Cancelled", detail: "The sender cancelled this link. The phone page will show a cancelled transfer.", tone: "error" };
     case "Error":

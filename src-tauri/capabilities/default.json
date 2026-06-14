@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Minimal desktop permissions for FluxDrop file selection and IPC.",
+  "description": "Minimal desktop permissions for FluxDrop file selection, IPC, menus, and tray controls.",
   "windows": ["main"],
   "permissions": [
     "core:default",

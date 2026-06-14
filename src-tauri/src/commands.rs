@@ -1,81 +1,76 @@
+use crate::archive;
 use crate::events;
-use crate::file_utils::{format_file_size, sanitize_filename};
+use crate::file_utils::format_file_size;
 use crate::network::{self, NetworkAddress, PREFERRED_PORT};
+use crate::receive::{ReceiveInfo, ReceiveSession, ReceiveStatusInfo};
 use crate::server;
+use crate::settings::{self, AppSettings, ALLOWED_EXPIRATION_MINUTES};
 use crate::share::{ShareInfo, ShareSession, ShareStatus, ShareStatusInfo};
 use crate::state::AppState;
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use qrcode::render::svg;
 use qrcode::QrCode;
-use std::path::PathBuf;
+use serde::Deserialize;
+use std::net::SocketAddr;
 use tauri::{AppHandle, State};
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct CreateShareOptions {
+    pub expiration_minutes: Option<u32>,
+    pub single_use: Option<bool>,
+    pub approval_required: Option<bool>,
+}
 
 #[tauri::command]
 pub async fn create_share(
-    file_path: String,
+    file_paths: Vec<String>,
+    options: Option<CreateShareOptions>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<ShareInfo, String> {
-    if file_path.trim().is_empty() {
-        return Err("Choose a file before starting a share.".to_string());
+    if file_paths.is_empty() || file_paths.iter().any(|path| path.trim().is_empty()) {
+        return Err("Choose at least one file or folder before starting a share.".to_string());
     }
 
-    let canonical_path = validate_file_path(&file_path).await?;
-    let metadata = tokio::fs::metadata(&canonical_path)
+    let selected_paths = file_paths.into_iter().map(Into::into).collect();
+    let prepared = tokio::task::spawn_blocking(move || archive::prepare_share(selected_paths))
         .await
-        .map_err(|_| "FluxDrop could not read the selected file metadata.".to_string())?;
-    let original_file_name = canonical_path
-        .file_name()
-        .and_then(|value| value.to_str())
-        .ok_or_else(|| "The selected file does not have a readable name.".to_string())?
-        .to_string();
-    let safe_file_name = sanitize_filename(&original_file_name);
-    let file_size = metadata.len();
-    let mime_type = mime_guess::from_path(&canonical_path)
-        .first_or_octet_stream()
-        .essence_str()
-        .to_string();
+        .map_err(|_| "FluxDrop could not finish inspecting the selected items.".to_string())??;
 
     let app_state = state.inner().clone();
+    let saved_settings = app_state.read().await.settings.clone();
+    let options = options.unwrap_or_default();
+    let expiration_minutes = options
+        .expiration_minutes
+        .unwrap_or(saved_settings.expiration_minutes);
+    if !ALLOWED_EXPIRATION_MINUTES.contains(&expiration_minutes) {
+        return Err("Link expiration must be 5, 10, 30, or 60 minutes.".to_string());
+    }
+    let single_use = options.single_use.unwrap_or(saved_settings.single_use);
+    let approval_required = options
+        .approval_required
+        .unwrap_or(saved_settings.approval_required);
     let addresses = network::list_network_addresses();
-    let ip = network::preferred_ip_address(&addresses);
+    let ip = network::configured_ip_address(&addresses, saved_settings.preferred_lan_ip.as_deref());
 
-    let address = {
-        let existing = app_state
-            .read()
-            .await
-            .server
-            .as_ref()
-            .map(|server| server.address);
-        if let Some(address) = existing {
-            address
-        } else {
-            let port = network::select_available_port(ip, PREFERRED_PORT)
-                .map_err(|_| "FluxDrop could not find an available local port.".to_string())?;
-            let handle = server::start_server(app_state.clone(), Some(app.clone()), ip, port)
-                .await
-                .map_err(|err| format!("FluxDrop could not start the local server: {err}"))?;
-            let address = handle.address;
-            let mut guard = app_state.write().await;
-            guard.server = Some(handle);
-            address
-        }
-    };
+    let endpoints = ensure_server(&app_state, &app, ip).await?;
 
-    let mut session = ShareSession::new(
-        canonical_path,
-        safe_file_name,
-        original_file_name,
-        file_size,
-        mime_type,
+    let mut session = ShareSession::new_with_payload(
+        prepared.payload,
+        prepared.safe_file_name,
+        prepared.original_file_name,
+        prepared.file_size,
+        prepared.mime_type,
+        prepared.file_count,
+        prepared.is_archive,
+        expiration_minutes,
+        single_use,
+        approval_required,
     );
     session.status = ShareStatus::Ready;
-    let download_url = format!(
-        "http://{}:{}/d/{}",
-        address.ip(),
-        address.port(),
-        session.token
-    );
-    let qr_svg = build_qr_svg(&download_url)?;
+    let download_url = format!("https://{}/d/{}", endpoints.secure, session.token);
+    let qr_svg = build_qr_svg(&onboarding_url(endpoints.onboarding, &download_url))?;
 
     let info = ShareInfo {
         id: session.id,
@@ -84,16 +79,23 @@ pub async fn create_share(
         file_size: session.file_size,
         file_size_human: format_file_size(session.file_size),
         mime_type: session.mime_type.clone(),
+        file_count: session.file_count,
+        is_archive: session.is_archive,
         download_url,
         qr_svg,
         expires_at: session.expires_at,
-        local_ip: address.ip().to_string(),
-        port: address.port(),
+        local_ip: endpoints.secure.ip().to_string(),
+        port: endpoints.secure.port(),
         status: session.status.clone(),
     };
 
     {
         let mut guard = app_state.write().await;
+        if let Some(receive) = guard.receive_session.as_mut() {
+            receive.cancelled = true;
+            receive.status = ShareStatus::Cancelled;
+        }
+        guard.receive_session = None;
         guard.detected_addresses = addresses;
         guard.current_share = Some(session);
         guard.last_request_status = Some("Share created; waiting for phone.".to_string());
@@ -105,7 +107,10 @@ pub async fn create_share(
 
 #[tauri::command]
 pub async fn cancel_share(state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
-    let app_state = state.inner().clone();
+    cancel_active_share(state.inner().clone(), app).await
+}
+
+pub async fn cancel_active_share(app_state: AppState, app: AppHandle) -> Result<(), String> {
     let status_info = {
         let mut guard = app_state.write().await;
         let local_address = guard
@@ -154,6 +159,198 @@ pub async fn get_network_addresses(
 }
 
 #[tauri::command]
+pub async fn start_receive(
+    destination_folder: String,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<ReceiveInfo, String> {
+    let destination = tokio::fs::canonicalize(destination_folder)
+        .await
+        .map_err(|_| "The selected destination folder could not be found.".to_string())?;
+    let metadata = tokio::fs::metadata(&destination)
+        .await
+        .map_err(|_| "FluxDrop could not read the destination folder.".to_string())?;
+    if !metadata.is_dir() {
+        return Err("Choose a folder where phone uploads should be saved.".to_string());
+    }
+
+    let app_state = state.inner().clone();
+    let settings = app_state.read().await.settings.clone();
+    let addresses = network::list_network_addresses();
+    let ip = network::configured_ip_address(&addresses, settings.preferred_lan_ip.as_deref());
+    let endpoints = ensure_server(&app_state, &app, ip).await?;
+    let session = ReceiveSession::new(
+        destination,
+        settings.expiration_minutes,
+        settings.approval_required,
+        settings.max_upload_bytes,
+    );
+    let upload_url = format!("https://{}/u/{}", endpoints.secure, session.token);
+    let info = ReceiveInfo {
+        id: session.id,
+        token: session.token.clone(),
+        upload_url: upload_url.clone(),
+        qr_svg: build_qr_svg(&onboarding_url(endpoints.onboarding, &upload_url))?,
+        destination_folder_name: session
+            .destination_folder
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("Selected folder")
+            .to_string(),
+        expires_at: session.expires_at,
+        local_ip: endpoints.secure.ip().to_string(),
+        port: endpoints.secure.port(),
+        max_upload_bytes: session.max_upload_bytes,
+        max_upload_size_human: format_file_size(session.max_upload_bytes),
+        status: session.status.clone(),
+    };
+
+    {
+        let mut guard = app_state.write().await;
+        if let Some(share) = guard.current_share.as_mut() {
+            share.cancel();
+        }
+        guard.current_share = None;
+        guard.receive_session = Some(session);
+        guard.detected_addresses = addresses;
+        guard.last_request_status = Some("Receive mode started; waiting for phone.".to_string());
+    }
+    events::emit_share_status(Some(&app), "receive_created", &info);
+    Ok(info)
+}
+
+#[tauri::command]
+pub async fn get_receive_status(
+    state: State<'_, AppState>,
+) -> Result<Option<ReceiveStatusInfo>, String> {
+    let guard = state.read().await;
+    let local_address = guard
+        .server
+        .as_ref()
+        .map(|server| server.address.to_string());
+    Ok(guard
+        .receive_session
+        .as_ref()
+        .map(|receive| receive.status_info(local_address, guard.last_request_status.clone())))
+}
+
+#[tauri::command]
+pub async fn cancel_receive(state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
+    cancel_active_receive(state.inner().clone(), app).await
+}
+
+pub async fn cancel_active_receive(app_state: AppState, app: AppHandle) -> Result<(), String> {
+    let info = {
+        let mut guard = app_state.write().await;
+        let local_address = guard
+            .server
+            .as_ref()
+            .map(|server| server.address.to_string());
+        let receive = guard
+            .receive_session
+            .as_mut()
+            .ok_or_else(|| "There is no active receive link.".to_string())?;
+        receive.cancelled = true;
+        receive.status = ShareStatus::Cancelled;
+        receive.status_info(
+            local_address,
+            Some("Receive mode cancelled on the PC.".to_string()),
+        )
+    };
+    events::emit_share_status(Some(&app), "receive_cancelled", &info);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn approve_upload(state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
+    set_upload_approval(state.inner().clone(), app, true).await
+}
+
+#[tauri::command]
+pub async fn deny_upload(state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
+    set_upload_approval(state.inner().clone(), app, false).await
+}
+
+#[tauri::command]
+pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
+    Ok(state.read().await.settings.clone())
+}
+
+#[tauri::command]
+pub async fn update_settings(
+    new_settings: AppSettings,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<AppSettings, String> {
+    new_settings.validate()?;
+    let app_state = state.inner().clone();
+    let addresses = network::list_network_addresses();
+    if let Some(configured) = new_settings.preferred_lan_ip.as_deref() {
+        if !addresses.iter().any(|address| address.ip == configured) {
+            return Err(
+                "The selected LAN adapter is no longer available. Refresh the list and choose another."
+                    .to_string(),
+            );
+        }
+    }
+    let selected_ip =
+        network::configured_ip_address(&addresses, new_settings.preferred_lan_ip.as_deref());
+    let (path, old_server_ip) = {
+        let guard = app_state.read().await;
+        (
+            guard.settings_path.clone(),
+            guard.server.as_ref().map(|server| server.address.ip()),
+        )
+    };
+    let path = path.ok_or_else(|| "FluxDrop settings storage is not initialized.".to_string())?;
+    settings::save(&path, &new_settings)?;
+
+    if old_server_ip.is_some_and(|current| current != selected_ip) {
+        let (server, share_info, receive_info) = {
+            let mut guard = app_state.write().await;
+            let old_address = guard
+                .server
+                .as_ref()
+                .map(|server| server.address.to_string());
+            let message =
+                "LAN adapter changed; the active transfer was cancelled and the server restarted."
+                    .to_string();
+            let share_info = guard.current_share.as_mut().map(|share| {
+                share.cancel();
+                share.status_info(old_address.clone(), Some(message.clone()))
+            });
+            let receive_info = guard.receive_session.as_mut().map(|receive| {
+                receive.cancelled = true;
+                receive.status = ShareStatus::Cancelled;
+                receive.status_info(old_address, Some(message.clone()))
+            });
+            guard.last_request_status = Some(message);
+            (guard.server.take(), share_info, receive_info)
+        };
+        if let Some(server) = server {
+            server.stop().await;
+        }
+        let port = network::select_available_port(selected_ip, PREFERRED_PORT)
+            .map_err(|_| "FluxDrop could not find a port on the selected adapter.".to_string())?;
+        let handle = server::start_server(app_state.clone(), Some(app.clone()), selected_ip, port)
+            .await
+            .map_err(|err| format!("FluxDrop could not restart on the selected adapter: {err}"))?;
+        app_state.write().await.server = Some(handle);
+        if let Some(info) = share_info {
+            events::emit_share_status(Some(&app), "share_cancelled", &info);
+        }
+        if let Some(info) = receive_info {
+            events::emit_share_status(Some(&app), "receive_cancelled", &info);
+        }
+    }
+
+    let mut guard = app_state.write().await;
+    guard.settings = new_settings.clone();
+    guard.detected_addresses = addresses;
+    Ok(new_settings)
+}
+
+#[tauri::command]
 pub async fn approve_download(state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
     set_approval_state(state.inner().clone(), app, true).await
 }
@@ -161,29 +358,6 @@ pub async fn approve_download(state: State<'_, AppState>, app: AppHandle) -> Res
 #[tauri::command]
 pub async fn deny_download(state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
     set_approval_state(state.inner().clone(), app, false).await
-}
-
-async fn validate_file_path(file_path: &str) -> Result<PathBuf, String> {
-    let path = PathBuf::from(file_path);
-    let canonical_path = tokio::fs::canonicalize(path)
-        .await
-        .map_err(|_| "The selected file could not be found.".to_string())?;
-    let metadata = tokio::fs::metadata(&canonical_path)
-        .await
-        .map_err(|_| "FluxDrop could not read the selected file.".to_string())?;
-
-    if metadata.is_dir() {
-        return Err(
-            "Choose a single file. Folders are not supported in FluxDrop v0.1.".to_string(),
-        );
-    }
-    if !metadata.is_file() {
-        return Err("The selected item is not a regular file.".to_string());
-    }
-    tokio::fs::File::open(&canonical_path)
-        .await
-        .map_err(|_| "FluxDrop does not have permission to read the selected file.".to_string())?;
-    Ok(canonical_path)
 }
 
 fn build_qr_svg(download_url: &str) -> Result<String, String> {
@@ -196,6 +370,49 @@ fn build_qr_svg(download_url: &str) -> Result<String, String> {
         .dark_color(svg::Color("#0f172a"))
         .light_color(svg::Color("#ffffff"))
         .build())
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ServerEndpoints {
+    secure: SocketAddr,
+    onboarding: SocketAddr,
+}
+
+fn onboarding_url(onboarding: SocketAddr, secure_url: &str) -> String {
+    format!(
+        "http://{onboarding}/connect#{}",
+        utf8_percent_encode(secure_url, NON_ALPHANUMERIC)
+    )
+}
+
+async fn ensure_server(
+    app_state: &AppState,
+    app: &AppHandle,
+    ip: std::net::IpAddr,
+) -> Result<ServerEndpoints, String> {
+    if let Some(endpoints) = app_state
+        .read()
+        .await
+        .server
+        .as_ref()
+        .map(|server| ServerEndpoints {
+            secure: server.address,
+            onboarding: server.onboarding_address,
+        })
+    {
+        return Ok(endpoints);
+    }
+    let port = network::select_available_port(ip, PREFERRED_PORT)
+        .map_err(|_| "FluxDrop could not find an available local port.".to_string())?;
+    let handle = server::start_server(app_state.clone(), Some(app.clone()), ip, port)
+        .await
+        .map_err(|err| format!("FluxDrop could not start the local server: {err}"))?;
+    let endpoints = ServerEndpoints {
+        secure: handle.address,
+        onboarding: handle.onboarding_address,
+    };
+    app_state.write().await.server = Some(handle);
+    Ok(endpoints)
 }
 
 async fn set_approval_state(
@@ -220,12 +437,14 @@ async fn set_approval_state(
             .current_share
             .as_mut()
             .ok_or_else(|| "There is no active share to approve or deny.".to_string())?;
-        share.approved = approved;
-        share.status = if approved {
-            ShareStatus::Approved
+        if !matches!(share.status, ShareStatus::AwaitingApproval) {
+            return Err("There is no pending download request to approve or deny.".to_string());
+        }
+        if approved {
+            share.approve();
         } else {
-            ShareStatus::Denied
-        };
+            share.deny(false);
+        }
         share.status_info(local_address, last_request_status)
     };
 
@@ -237,6 +456,50 @@ async fn set_approval_state(
             "download_denied"
         },
         &status_info,
+    );
+    Ok(())
+}
+
+async fn set_upload_approval(
+    app_state: AppState,
+    app: AppHandle,
+    approved: bool,
+) -> Result<(), String> {
+    let info = {
+        let mut guard = app_state.write().await;
+        let local_address = guard
+            .server
+            .as_ref()
+            .map(|server| server.address.to_string());
+        let receive = guard
+            .receive_session
+            .as_mut()
+            .ok_or_else(|| "There is no active upload request.".to_string())?;
+        if !matches!(receive.status, ShareStatus::AwaitingApproval) {
+            return Err("There is no pending upload request to approve or deny.".to_string());
+        }
+        if approved {
+            receive.approve();
+        } else {
+            receive.deny(false);
+        }
+        receive.status_info(
+            local_address,
+            Some(if approved {
+                "Phone upload approved on the PC.".to_string()
+            } else {
+                "Phone upload denied on the PC.".to_string()
+            }),
+        )
+    };
+    events::emit_share_status(
+        Some(&app),
+        if approved {
+            "upload_approved"
+        } else {
+            "upload_denied"
+        },
+        &info,
     );
     Ok(())
 }
