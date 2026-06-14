@@ -1,3 +1,4 @@
+use crate::history::HistoryRecord;
 use crate::network::NetworkAddress;
 use crate::rate_limit::RateLimiter;
 use crate::receive::ReceiveSession;
@@ -29,6 +30,8 @@ pub struct RuntimeState {
     pub last_request_status: Option<String>,
     pub settings: AppSettings,
     pub settings_path: Option<PathBuf>,
+    pub history: Vec<HistoryRecord>,
+    pub history_path: Option<PathBuf>,
 }
 
 pub struct ServerHandle {
@@ -45,6 +48,15 @@ impl AppState {
     }
 
     pub fn with_settings(settings: AppSettings, settings_path: Option<PathBuf>) -> Self {
+        Self::with_storage(settings, settings_path, Vec::new(), None)
+    }
+
+    pub fn with_storage(
+        settings: AppSettings,
+        settings_path: Option<PathBuf>,
+        history: Vec<HistoryRecord>,
+        history_path: Option<PathBuf>,
+    ) -> Self {
         Self {
             inner: Arc::new(RwLock::new(RuntimeState {
                 current_share: None,
@@ -55,6 +67,8 @@ impl AppState {
                 last_request_status: None,
                 settings,
                 settings_path,
+                history,
+                history_path,
             })),
         }
     }

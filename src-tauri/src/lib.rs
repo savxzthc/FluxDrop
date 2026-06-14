@@ -3,6 +3,7 @@ pub mod archive;
 pub mod commands;
 pub mod events;
 pub mod file_utils;
+pub mod history;
 pub mod network;
 pub mod rate_limit;
 pub mod receive;

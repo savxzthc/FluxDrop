@@ -36,7 +36,11 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
-    "icon": ["icons/icon.ico"]
+    "targets": ["nsis", "msi"],
+    "icon": ["icons/icon.ico"],
+    "publisher": "FluxDrop Contributors",
+    "copyright": "Copyright © 2026 FluxDrop Contributors",
+    "shortDescription": "Secure local file sharing between a Windows PC and phone.",
+    "longDescription": "FluxDrop transfers files directly between a Windows PC and a phone over the local network without accounts, cloud storage, or a phone app."
   }
 }

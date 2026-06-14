@@ -37,6 +37,10 @@ Approval bypass: the phone submits filename and size metadata first. The multipa
 
 Directory listing: an attacker could try to browse files. FluxDrop has no listing routes.
 
+Local history disclosure: the history file contains filenames, phone IP addresses, timestamps, and original source or destination paths needed for repeat actions. It deliberately excludes tokens, transfer URLs, certificates, and file contents. Anyone with access to the same Windows account may be able to read this metadata, so the desktop UI provides a clear-history control.
+
+History tampering: history is not an authorization source. A repeat action revalidates that saved local paths still exist, then creates a new transfer session with a fresh random token and current approval, expiration, and single-use settings.
+
 ## Out Of Scope For v0.1
 
 - Internet-accessible attackers; FluxDrop does not open router ports

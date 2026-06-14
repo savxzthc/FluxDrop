@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Persisted System, Light, and Dark desktop themes with a header shortcut and automatic Windows appearance tracking.
 - A native-style desktop shell with dedicated Send, Receive, and Settings workspaces, persistent navigation, clearer transfer guidance, and responsive layouts.
 - Windows GUI subsystem builds in both debug and release modes so FluxDrop no longer opens a companion console window.
+- Tag-driven Windows GitHub Releases with NSIS and MSI installers, draft release publishing, and version-consistency validation.
+- A persisted History workspace showing transfer direction, filename, size, phone IP, outcome, and local time.
+- Backend-only repeat references for restarting prior send or receive setups without persisting tokens or exposing full paths to React.
+- Clear-history controls and a 100-record retention limit.
 
 ### Security
 

@@ -8,6 +8,7 @@ const MAX_ARCHIVE_ENTRIES: usize = 100_000;
 
 pub struct PreparedShare {
     pub payload: SharePayload,
+    pub source_paths: Vec<PathBuf>,
     pub safe_file_name: String,
     pub original_file_name: String,
     pub file_size: u64,
@@ -54,6 +55,7 @@ fn prepare_single_file(path: PathBuf) -> Result<PreparedShare, String> {
         .map_err(|_| "FluxDrop does not have permission to read the selected file.".to_string())?;
     let original_file_name = readable_file_name(&path)?;
     Ok(PreparedShare {
+        source_paths: vec![path.clone()],
         safe_file_name: sanitize_filename(&original_file_name),
         original_file_name,
         file_size: metadata.len(),
@@ -68,6 +70,7 @@ fn prepare_single_file(path: PathBuf) -> Result<PreparedShare, String> {
 }
 
 fn prepare_archive(paths: Vec<PathBuf>) -> Result<PreparedShare, String> {
+    let source_paths = paths.clone();
     let single_folder = paths.len() == 1 && paths[0].is_dir();
     let archive_name = if single_folder {
         format!("{}.zip", sanitize_filename(&readable_file_name(&paths[0])?))
@@ -148,6 +151,7 @@ fn prepare_archive(paths: Vec<PathBuf>) -> Result<PreparedShare, String> {
     }
 
     Ok(PreparedShare {
+        source_paths,
         payload: SharePayload::ZipArchive { entries },
         safe_file_name: archive_name.clone(),
         original_file_name: archive_name,

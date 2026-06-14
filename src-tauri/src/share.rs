@@ -54,6 +54,7 @@ pub struct ShareSession {
     pub id: Uuid,
     pub token: String,
     pub payload: SharePayload,
+    pub source_paths: Vec<PathBuf>,
     pub safe_file_name: String,
     pub original_file_name: String,
     pub file_size: u64,
@@ -148,7 +149,10 @@ impl ShareSession {
         approval_required: bool,
     ) -> Self {
         Self::new_with_payload(
-            SharePayload::SingleFile { path: file_path },
+            SharePayload::SingleFile {
+                path: file_path.clone(),
+            },
+            vec![file_path],
             safe_file_name,
             original_file_name,
             file_size,
@@ -164,6 +168,7 @@ impl ShareSession {
     #[allow(clippy::too_many_arguments)]
     pub fn new_with_payload(
         payload: SharePayload,
+        source_paths: Vec<PathBuf>,
         safe_file_name: String,
         original_file_name: String,
         file_size: u64,
@@ -179,6 +184,7 @@ impl ShareSession {
             id: Uuid::new_v4(),
             token: generate_token(),
             payload,
+            source_paths,
             safe_file_name,
             original_file_name,
             file_size,
@@ -345,7 +351,10 @@ pub fn spawn_expiration_task(state: AppState, app: EventHandle) {
                         )
                     {
                         share.expire();
-                        Some(share.status_info(local_address.clone(), last_request_status))
+                        Some((
+                            share.status_info(local_address.clone(), last_request_status),
+                            share.clone(),
+                        ))
                     } else {
                         None
                     }
@@ -360,12 +369,13 @@ pub fn spawn_expiration_task(state: AppState, app: EventHandle) {
                         )
                     {
                         receive.status = ShareStatus::Expired;
-                        Some(
+                        Some((
                             receive.status_info(
                                 local_address,
                                 Some("Receive link expired.".to_string()),
                             ),
-                        )
+                            receive.clone(),
+                        ))
                     } else {
                         None
                     }
@@ -375,10 +385,12 @@ pub fn spawn_expiration_task(state: AppState, app: EventHandle) {
                 (share_expired, receive_expired)
             };
 
-            if let Some(info) = expired_info.0 {
+            if let Some((info, share)) = expired_info.0 {
+                let _ = crate::history::record_share(&state, &share).await;
                 events::emit_share_status(Some(&app), "share_expired", &info);
             }
-            if let Some(info) = expired_info.1 {
+            if let Some((info, receive)) = expired_info.1 {
+                let _ = crate::history::record_receive(&state, &receive).await;
                 events::emit_share_status(Some(&app), "receive_expired", &info);
             }
         }

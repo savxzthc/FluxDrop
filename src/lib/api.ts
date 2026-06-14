@@ -108,6 +108,29 @@ export interface CreateShareOptions {
   approval_required?: boolean;
 }
 
+export type TransferDirection = "send" | "receive";
+export type TransferOutcome = "completed" | "denied" | "timed_out" | "cancelled" | "expired" | "failed";
+
+export interface HistoryEntry {
+  id: string;
+  direction: TransferDirection;
+  file_name: string;
+  file_size: number | null;
+  file_size_human: string | null;
+  file_count: number;
+  is_archive: boolean;
+  mime_type: string | null;
+  created_at: string;
+  finished_at: string;
+  client_ip: string | null;
+  outcome: TransferOutcome;
+  can_repeat: boolean;
+}
+
+export type RepeatedTransfer =
+  | { direction: "send"; transfer: ShareInfo }
+  | { direction: "receive"; transfer: ReceiveInfo };
+
 export function createShare(filePaths: string[], options?: CreateShareOptions): Promise<ShareInfo> {
   return invoke("create_share", { filePaths, options: options ?? null });
 }
@@ -158,4 +181,16 @@ export function approveUpload(): Promise<void> {
 
 export function denyUpload(): Promise<void> {
   return invoke("deny_upload");
+}
+
+export function getTransferHistory(): Promise<HistoryEntry[]> {
+  return invoke("get_transfer_history");
+}
+
+export function clearTransferHistory(): Promise<void> {
+  return invoke("clear_transfer_history");
+}
+
+export function repeatTransfer(historyId: string): Promise<RepeatedTransfer> {
+  return invoke("repeat_transfer", { historyId });
 }

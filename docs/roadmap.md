@@ -16,13 +16,13 @@
 - Self-contained mobile page
 - Architecture, protocol, threat model, and security checklist documentation
 
-Full Tauri binary builds are not included in CI yet. They require platform-specific runners and installer configuration; v0.1 CI focuses on Rust formatting, linting, tests, and frontend builds.
+Pull-request CI focuses on Rust formatting, linting, tests, audits, and frontend builds. Version tags additionally run the Windows release workflow to produce NSIS and MSI installers.
 
 ## v0.2
 
 - [x] PC approval mode before download
 - [x] Better LAN adapter selection UI
-- Windows installer through Tauri
+- [x] Windows NSIS/MSI installers and tag-driven GitHub Releases
 - Better firewall diagnostics
 - [x] Native-style desktop shell with dedicated Send, Receive, and Settings workspaces
 - [x] Persisted light, dark, and system-following themes
@@ -35,7 +35,7 @@ Full Tauri binary builds are not included in CI yet. They require platform-speci
 
 - [x] Multiple files as an on-the-fly ZIP
 - [x] Folder sending as an on-the-fly ZIP
-- Transfer history in the desktop app
+- [x] Persisted transfer history with repeat and clear actions
 - More robust rate limiting
 - macOS support
 

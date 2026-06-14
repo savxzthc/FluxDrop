@@ -45,4 +45,7 @@
 - [x] UI and documentation disclose that self-signed TLS does not prevent active MITM
 - [x] PC approval is required by default before download
 - [x] Approval requests expire after 60 seconds
+- [x] Transfer history excludes tokens, URLs, certificates, and file contents
+- [x] History repeat paths remain backend-only and are revalidated before reuse
+- [x] History retention is bounded to 100 records and can be cleared from the desktop UI
 - [ ] Deferred - opt-in mDNS and remembered devices require a browser-compatible discovery design

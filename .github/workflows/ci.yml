@@ -37,6 +37,7 @@ jobs:
           path: node_modules
           key: node-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - run: npm ci
+      - run: npm run release:check
       - run: npm run build
 
   cargo-audit:

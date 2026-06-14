@@ -1,6 +1,7 @@
 use crate::archive;
 use crate::events;
 use crate::file_utils::format_file_size;
+use crate::history::{self, HistoryEntry, RepeatTarget};
 use crate::network::{self, NetworkAddress, PREFERRED_PORT};
 use crate::receive::{ReceiveInfo, ReceiveSession, ReceiveStatusInfo};
 use crate::server;
@@ -10,7 +11,7 @@ use crate::state::AppState;
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use qrcode::render::svg;
 use qrcode::QrCode;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use tauri::{AppHandle, State};
 
@@ -29,6 +30,15 @@ pub async fn create_share(
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<ShareInfo, String> {
+    create_share_impl(file_paths, options, state.inner().clone(), app).await
+}
+
+async fn create_share_impl(
+    file_paths: Vec<String>,
+    options: Option<CreateShareOptions>,
+    app_state: AppState,
+    app: AppHandle,
+) -> Result<ShareInfo, String> {
     if file_paths.is_empty() || file_paths.iter().any(|path| path.trim().is_empty()) {
         return Err("Choose at least one file or folder before starting a share.".to_string());
     }
@@ -38,7 +48,6 @@ pub async fn create_share(
         .await
         .map_err(|_| "FluxDrop could not finish inspecting the selected items.".to_string())??;
 
-    let app_state = state.inner().clone();
     let saved_settings = app_state.read().await.settings.clone();
     let options = options.unwrap_or_default();
     let expiration_minutes = options
@@ -58,6 +67,7 @@ pub async fn create_share(
 
     let mut session = ShareSession::new_with_payload(
         prepared.payload,
+        prepared.source_paths,
         prepared.safe_file_name,
         prepared.original_file_name,
         prepared.file_size,
@@ -89,16 +99,27 @@ pub async fn create_share(
         status: session.status.clone(),
     };
 
-    {
+    let (previous_share, previous_receive) = {
         let mut guard = app_state.write().await;
-        if let Some(receive) = guard.receive_session.as_mut() {
+        let previous_share = guard.current_share.take().map(|mut share| {
+            share.cancel();
+            share
+        });
+        let previous_receive = guard.receive_session.take().map(|mut receive| {
             receive.cancelled = true;
             receive.status = ShareStatus::Cancelled;
-        }
-        guard.receive_session = None;
+            receive
+        });
         guard.detected_addresses = addresses;
         guard.current_share = Some(session);
         guard.last_request_status = Some("Share created; waiting for phone.".to_string());
+        (previous_share, previous_receive)
+    };
+    if let Some(share) = previous_share.as_ref() {
+        let _ = history::record_share(&app_state, share).await;
+    }
+    if let Some(receive) = previous_receive.as_ref() {
+        let _ = history::record_receive(&app_state, receive).await;
     }
 
     events::emit_share_status(Some(&app), "share_created", &info);
@@ -111,7 +132,7 @@ pub async fn cancel_share(state: State<'_, AppState>, app: AppHandle) -> Result<
 }
 
 pub async fn cancel_active_share(app_state: AppState, app: AppHandle) -> Result<(), String> {
-    let status_info = {
+    let (status_info, terminal_share) = {
         let mut guard = app_state.write().await;
         let local_address = guard
             .server
@@ -121,12 +142,18 @@ pub async fn cancel_active_share(app_state: AppState, app: AppHandle) -> Result<
         guard.last_request_status = last_request_status.clone();
         if let Some(share) = guard.current_share.as_mut() {
             share.cancel();
-            Some(share.status_info(local_address, last_request_status))
+            (
+                Some(share.status_info(local_address, last_request_status)),
+                Some(share.clone()),
+            )
         } else {
-            None
+            (None, None)
         }
     };
 
+    if let Some(share) = terminal_share.as_ref() {
+        let _ = history::record_share(&app_state, share).await;
+    }
     if let Some(info) = status_info {
         events::emit_share_status(Some(&app), "share_cancelled", &info);
     }
@@ -164,6 +191,14 @@ pub async fn start_receive(
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<ReceiveInfo, String> {
+    start_receive_impl(destination_folder, state.inner().clone(), app).await
+}
+
+async fn start_receive_impl(
+    destination_folder: String,
+    app_state: AppState,
+    app: AppHandle,
+) -> Result<ReceiveInfo, String> {
     let destination = tokio::fs::canonicalize(destination_folder)
         .await
         .map_err(|_| "The selected destination folder could not be found.".to_string())?;
@@ -174,7 +209,6 @@ pub async fn start_receive(
         return Err("Choose a folder where phone uploads should be saved.".to_string());
     }
 
-    let app_state = state.inner().clone();
     let settings = app_state.read().await.settings.clone();
     let addresses = network::list_network_addresses();
     let ip = network::configured_ip_address(&addresses, settings.preferred_lan_ip.as_deref());
@@ -205,15 +239,27 @@ pub async fn start_receive(
         status: session.status.clone(),
     };
 
-    {
+    let (previous_share, previous_receive) = {
         let mut guard = app_state.write().await;
-        if let Some(share) = guard.current_share.as_mut() {
+        let previous_share = guard.current_share.take().map(|mut share| {
             share.cancel();
-        }
-        guard.current_share = None;
+            share
+        });
+        let previous_receive = guard.receive_session.take().map(|mut receive| {
+            receive.cancelled = true;
+            receive.status = ShareStatus::Cancelled;
+            receive
+        });
         guard.receive_session = Some(session);
         guard.detected_addresses = addresses;
         guard.last_request_status = Some("Receive mode started; waiting for phone.".to_string());
+        (previous_share, previous_receive)
+    };
+    if let Some(share) = previous_share.as_ref() {
+        let _ = history::record_share(&app_state, share).await;
+    }
+    if let Some(receive) = previous_receive.as_ref() {
+        let _ = history::record_receive(&app_state, receive).await;
     }
     events::emit_share_status(Some(&app), "receive_created", &info);
     Ok(info)
@@ -240,7 +286,7 @@ pub async fn cancel_receive(state: State<'_, AppState>, app: AppHandle) -> Resul
 }
 
 pub async fn cancel_active_receive(app_state: AppState, app: AppHandle) -> Result<(), String> {
-    let info = {
+    let (info, terminal_receive) = {
         let mut guard = app_state.write().await;
         let local_address = guard
             .server
@@ -252,13 +298,93 @@ pub async fn cancel_active_receive(app_state: AppState, app: AppHandle) -> Resul
             .ok_or_else(|| "There is no active receive link.".to_string())?;
         receive.cancelled = true;
         receive.status = ShareStatus::Cancelled;
-        receive.status_info(
-            local_address,
-            Some("Receive mode cancelled on the PC.".to_string()),
+        (
+            receive.status_info(
+                local_address,
+                Some("Receive mode cancelled on the PC.".to_string()),
+            ),
+            receive.clone(),
         )
     };
+    let _ = history::record_receive(&app_state, &terminal_receive).await;
     events::emit_share_status(Some(&app), "receive_cancelled", &info);
     Ok(())
+}
+
+#[tauri::command]
+pub async fn get_transfer_history(state: State<'_, AppState>) -> Result<Vec<HistoryEntry>, String> {
+    Ok(state
+        .read()
+        .await
+        .history
+        .iter()
+        .map(|record| record.public_entry())
+        .collect())
+}
+
+#[tauri::command]
+pub async fn clear_transfer_history(state: State<'_, AppState>) -> Result<(), String> {
+    let mut guard = state.write().await;
+    if let Some(path) = guard.history_path.as_deref() {
+        history::save(path, &[])?;
+    }
+    guard.history.clear();
+    Ok(())
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "direction", content = "transfer", rename_all = "snake_case")]
+pub enum RepeatedTransfer {
+    Send(ShareInfo),
+    Receive(ReceiveInfo),
+}
+
+#[tauri::command]
+pub async fn repeat_transfer(
+    history_id: uuid::Uuid,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<RepeatedTransfer, String> {
+    let app_state = state.inner().clone();
+    let repeat = {
+        let guard = app_state.read().await;
+        guard
+            .history
+            .iter()
+            .find(|entry| entry.id == history_id)
+            .map(|entry| entry.repeat.clone())
+            .ok_or_else(|| "That transfer is no longer in history.".to_string())?
+    };
+
+    match repeat {
+        RepeatTarget::Send { paths } => {
+            if paths.is_empty() || paths.iter().any(|path| !path.exists()) {
+                return Err(
+                    "One or more original files are no longer available at their saved locations."
+                        .to_string(),
+                );
+            }
+            let paths = paths
+                .into_iter()
+                .map(|path| path.to_string_lossy().into_owned())
+                .collect();
+            create_share_impl(paths, None, app_state, app)
+                .await
+                .map(RepeatedTransfer::Send)
+        }
+        RepeatTarget::Receive { destination_folder } => {
+            if !destination_folder.is_dir() {
+                return Err("The original destination folder is no longer available.".to_string());
+            }
+            start_receive_impl(
+                destination_folder.to_string_lossy().into_owned(),
+                app_state,
+                app,
+            )
+            .await
+            .map(RepeatedTransfer::Receive)
+        }
+    }
 }
 
 #[tauri::command]
@@ -306,7 +432,7 @@ pub async fn update_settings(
     settings::save(&path, &new_settings)?;
 
     if old_server_ip.is_some_and(|current| current != selected_ip) {
-        let (server, share_info, receive_info) = {
+        let (server, share_info, receive_info, terminal_share, terminal_receive) = {
             let mut guard = app_state.write().await;
             let old_address = guard
                 .server
@@ -319,14 +445,28 @@ pub async fn update_settings(
                 share.cancel();
                 share.status_info(old_address.clone(), Some(message.clone()))
             });
+            let terminal_share = guard.current_share.clone();
             let receive_info = guard.receive_session.as_mut().map(|receive| {
                 receive.cancelled = true;
                 receive.status = ShareStatus::Cancelled;
                 receive.status_info(old_address, Some(message.clone()))
             });
+            let terminal_receive = guard.receive_session.clone();
             guard.last_request_status = Some(message);
-            (guard.server.take(), share_info, receive_info)
+            (
+                guard.server.take(),
+                share_info,
+                receive_info,
+                terminal_share,
+                terminal_receive,
+            )
         };
+        if let Some(share) = terminal_share.as_ref() {
+            let _ = history::record_share(&app_state, share).await;
+        }
+        if let Some(receive) = terminal_receive.as_ref() {
+            let _ = history::record_receive(&app_state, receive).await;
+        }
         if let Some(server) = server {
             server.stop().await;
         }
@@ -420,7 +560,7 @@ async fn set_approval_state(
     app: AppHandle,
     approved: bool,
 ) -> Result<(), String> {
-    let status_info = {
+    let (status_info, terminal_share) = {
         let mut guard = app_state.write().await;
         let local_address = guard
             .server
@@ -445,9 +585,15 @@ async fn set_approval_state(
         } else {
             share.deny(false);
         }
-        share.status_info(local_address, last_request_status)
+        (
+            share.status_info(local_address, last_request_status),
+            (!approved).then(|| share.clone()),
+        )
     };
 
+    if let Some(share) = terminal_share.as_ref() {
+        let _ = history::record_share(&app_state, share).await;
+    }
     events::emit_share_status(
         Some(&app),
         if approved {
@@ -465,7 +611,7 @@ async fn set_upload_approval(
     app: AppHandle,
     approved: bool,
 ) -> Result<(), String> {
-    let info = {
+    let (info, terminal_receive) = {
         let mut guard = app_state.write().await;
         let local_address = guard
             .server
@@ -483,15 +629,21 @@ async fn set_upload_approval(
         } else {
             receive.deny(false);
         }
-        receive.status_info(
-            local_address,
-            Some(if approved {
-                "Phone upload approved on the PC.".to_string()
-            } else {
-                "Phone upload denied on the PC.".to_string()
-            }),
+        (
+            receive.status_info(
+                local_address,
+                Some(if approved {
+                    "Phone upload approved on the PC.".to_string()
+                } else {
+                    "Phone upload denied on the PC.".to_string()
+                }),
+            ),
+            (!approved).then(|| receive.clone()),
         )
     };
+    if let Some(receive) = terminal_receive.as_ref() {
+        let _ = history::record_receive(&app_state, receive).await;
+    }
     events::emit_share_status(
         Some(&app),
         if approved {

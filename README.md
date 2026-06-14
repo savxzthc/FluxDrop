@@ -2,7 +2,7 @@
 
 **Send files from your PC to your phone with one QR scan. No app, no account, no cloud.**
 
-[![CI](https://img.shields.io/badge/CI-pending-lightgrey)](https://github.com/fluxdrop/fluxdrop/actions) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](CHANGELOG.md)
+[![CI](https://github.com/savxzthc/FluxDrop/actions/workflows/ci.yml/badge.svg)](https://github.com/savxzthc/FluxDrop/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](CHANGELOG.md)
 
 <!-- Add a GIF or screenshot here showing the QR flow -->
 
@@ -32,6 +32,7 @@ AirDrop is excellent but Apple-centered, Bluetooth is slow for larger files, Goo
 - Close-to-tray operation that keeps active transfers running
 - Persisted System, Light, and Dark appearance modes with automatic Windows theme following
 - Native-style Send, Receive, and Settings workspaces with responsive desktop navigation
+- Persisted transfer history with outcomes, device IP, clear-history controls, and repeat actions
 - Filename sanitization, HTML escaping, security headers, and invalid-token rate limiting
 
 ## What FluxDrop Does Not Do Yet
@@ -50,12 +51,18 @@ Because the certificate is self-signed, the phone shows a browser warning the fi
 
 Download links use URL-safe random tokens generated from 20 random bytes. They expire after the configured 5/10/30/60-minute window and are single-use by default.
 
+Transfer history is stored locally in the app configuration directory. It contains display metadata, the phone IP when available, and the original local source or destination paths needed for repeat actions. It never stores transfer tokens, URLs, certificates, or file contents, and it can be cleared from the History workspace.
+
 ## Requirements
 
 - Windows 10/11 x64
 - PC and phone on the same Wi-Fi network
 - No phone app required
 - Rust stable, Node.js LTS, and the Tauri CLI for development
+
+## Download
+
+Windows installers are published on the [GitHub Releases page](https://github.com/savxzthc/FluxDrop/releases). Each tagged release includes both an NSIS setup executable and an MSI package.
 
 ## Development Setup
 
@@ -81,6 +88,8 @@ cargo build
 cd ..
 npm run tauri build
 ```
+
+Release tags must match the version in `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`. See [docs/releasing.md](docs/releasing.md).
 
 ## Windows Firewall Note
 

@@ -5,6 +5,7 @@ import { ApprovalPrompt } from "./components/ApprovalPrompt";
 import { DropZone } from "./components/DropZone";
 import { FileCard } from "./components/FileCard";
 import { HelpCard } from "./components/HelpCard";
+import { HistoryCard } from "./components/HistoryCard";
 import { QrCard } from "./components/QrCard";
 import { ReceiveQrCard } from "./components/ReceiveQrCard";
 import { ReceiveSetupCard } from "./components/ReceiveSetupCard";
@@ -19,6 +20,7 @@ import {
   AppSettings,
   cancelReceive,
   cancelShare,
+  clearTransferHistory,
   createShare,
   denyDownload,
   denyUpload,
@@ -26,9 +28,12 @@ import {
   getReceiveStatus,
   getSettings,
   getShareStatus,
+  getTransferHistory,
+  HistoryEntry,
   NetworkAddress,
   ReceiveInfo,
   ReceiveStatusInfo,
+  repeatTransfer,
   ShareInfo,
   ShareStatusInfo,
   startReceive,
@@ -36,7 +41,7 @@ import {
 } from "./lib/api";
 
 type SpeedSample = { time: number; bytes: number };
-type AppView = "send" | "receive" | "settings";
+type AppView = "send" | "receive" | "history" | "settings";
 
 const DEFAULT_SETTINGS: AppSettings = {
   expiration_minutes: 10,
@@ -50,6 +55,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 const VIEW_COPY: Record<AppView, { eyebrow: string; title: string }> = {
   send: { eyebrow: "Send workspace", title: "Send to phone" },
   receive: { eyebrow: "Receive workspace", title: "Receive from phone" },
+  history: { eyebrow: "Activity", title: "Transfer history" },
   settings: { eyebrow: "Preferences", title: "Settings" }
 };
 
@@ -62,6 +68,9 @@ export default function App() {
   const [receiveStatus, setReceiveStatus] = useState<ReceiveStatusInfo | null>(null);
   const [addresses, setAddresses] = useState<NetworkAddress[]>([]);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [historyBusyId, setHistoryBusyId] = useState<string | null>(null);
+  const [historyClearing, setHistoryClearing] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPreparing, setIsPreparing] = useState(false);
@@ -106,6 +115,7 @@ export default function App() {
         setThemePreference(loaded.theme);
       })
       .catch(() => undefined);
+    getTransferHistory().then(setHistory).catch(() => setHistory([]));
   }, []);
 
   useEffect(() => {
@@ -129,10 +139,25 @@ export default function App() {
         "download_started",
         "progress_updated",
         "download_completed",
+        "download_interrupted",
         "share_expired",
         "share_cancelled"
       ]) {
-        const unlisten = await listen<ShareStatusInfo>(eventName, (event) => setStatus(event.payload));
+        const unlisten = await listen<ShareStatusInfo>(eventName, (event) => {
+          setStatus(event.payload);
+          if (
+            [
+              "download_denied",
+              "download_timed_out",
+              "download_completed",
+              "share_expired",
+              "share_cancelled",
+              "download_interrupted"
+            ].includes(eventName)
+          ) {
+            void refreshHistory();
+          }
+        });
         unlisteners.push(unlisten);
       }
       for (const eventName of [
@@ -148,7 +173,21 @@ export default function App() {
         "receive_expired",
         "receive_cancelled"
       ]) {
-        const unlisten = await listen<ReceiveStatusInfo>(eventName, (event) => setReceiveStatus(event.payload));
+        const unlisten = await listen<ReceiveStatusInfo>(eventName, (event) => {
+          setReceiveStatus(event.payload);
+          if (
+            [
+              "upload_denied",
+              "upload_timed_out",
+              "upload_completed",
+              "upload_interrupted",
+              "receive_expired",
+              "receive_cancelled"
+            ].includes(eventName)
+          ) {
+            void refreshHistory();
+          }
+        });
         unlisteners.push(unlisten);
       }
       const dropUnlisten = await listen<string[] | { paths?: string[] }>("tauri://drag-drop", (event) => {
@@ -196,6 +235,10 @@ export default function App() {
     }
   }
 
+  async function refreshHistory() {
+    setHistory(await getTransferHistory());
+  }
+
   async function beginReceive(destinationFolder: string) {
     setError(null);
     setIsPreparing(true);
@@ -219,12 +262,54 @@ export default function App() {
     setShare(null);
     setStatus(null);
     samples.current = [];
+    await refreshHistory();
   }
 
   async function cancelCurrentReceive() {
     await cancelReceive();
     setReceive(null);
     setReceiveStatus(null);
+    await refreshHistory();
+  }
+
+  async function repeatHistoryEntry(entry: HistoryEntry) {
+    setHistoryBusyId(entry.id);
+    setError(null);
+    try {
+      const repeated = await repeatTransfer(entry.id);
+      if (repeated.direction === "send") {
+        setReceive(null);
+        setReceiveStatus(null);
+        setStatus(null);
+        setShare(repeated.transfer);
+        setView("send");
+      } else {
+        setShare(null);
+        setStatus(null);
+        setReceiveStatus(null);
+        setReceive(repeated.transfer);
+        setView("receive");
+      }
+      setAddresses(await getNetworkAddresses());
+      await refreshHistory();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setHistoryBusyId(null);
+    }
+  }
+
+  async function clearHistory() {
+    setHistoryClearing(true);
+    setError(null);
+    try {
+      await clearTransferHistory();
+      setHistory([]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setHistoryClearing(false);
+    }
   }
 
   async function saveSettings(next: AppSettings) {
@@ -287,17 +372,41 @@ export default function App() {
         </div>
 
         <nav className="sidebar-nav" aria-label="Primary navigation">
-          <button className={view === "send" ? "active" : ""} type="button" onClick={() => setView("send")}>
+          <button
+            className={view === "send" ? "active" : ""}
+            type="button"
+            aria-label="Send"
+            onClick={() => setView("send")}
+          >
             <AppIcon name="send" />
             <span>Send</span>
             {share ? <i className="nav-activity-dot" aria-label="Active send link" /> : null}
           </button>
-          <button className={view === "receive" ? "active" : ""} type="button" onClick={() => setView("receive")}>
+          <button
+            className={view === "receive" ? "active" : ""}
+            type="button"
+            aria-label="Receive"
+            onClick={() => setView("receive")}
+          >
             <AppIcon name="receive" />
             <span>Receive</span>
             {receive ? <i className="nav-activity-dot" aria-label="Active receive link" /> : null}
           </button>
-          <button className={view === "settings" ? "active" : ""} type="button" onClick={() => setView("settings")}>
+          <button
+            className={view === "history" ? "active" : ""}
+            type="button"
+            aria-label="History"
+            onClick={() => setView("history")}
+          >
+            <AppIcon name="history" />
+            <span>History</span>
+          </button>
+          <button
+            className={view === "settings" ? "active" : ""}
+            type="button"
+            aria-label="Settings"
+            onClick={() => setView("settings")}
+          >
             <AppIcon name="settings" />
             <span>Settings</span>
           </button>
@@ -341,6 +450,16 @@ export default function App() {
 
           {view === "settings" ? (
             <SettingsWorkspace settings={settings} addresses={addresses} onSave={saveSettings} />
+          ) : null}
+
+          {view === "history" ? (
+            <HistoryWorkspace
+              entries={history}
+              busyId={historyBusyId}
+              clearing={historyClearing}
+              onRepeat={repeatHistoryEntry}
+              onClear={clearHistory}
+            />
           ) : null}
 
           {view === "send" && !share ? (
@@ -626,6 +745,35 @@ function SettingsWorkspace({ settings, addresses, onSave }: SettingsWorkspacePro
         </div>
       </section>
       <SettingsCard settings={settings} addresses={addresses} onSave={onSave} />
+    </>
+  );
+}
+
+interface HistoryWorkspaceProps {
+  entries: HistoryEntry[];
+  busyId: string | null;
+  clearing: boolean;
+  onRepeat: (entry: HistoryEntry) => Promise<void>;
+  onClear: () => Promise<void>;
+}
+
+function HistoryWorkspace({ entries, busyId, clearing, onRepeat, onClear }: HistoryWorkspaceProps) {
+  return (
+    <>
+      <section className="workspace-heading compact-heading">
+        <div>
+          <span className="eyebrow">Local activity</span>
+          <h1>Your recent transfers.</h1>
+          <p>Review outcomes or restart a transfer without rebuilding its setup from scratch.</p>
+        </div>
+      </section>
+      <HistoryCard
+        entries={entries}
+        busyId={busyId}
+        clearing={clearing}
+        onRepeat={(entry) => void onRepeat(entry)}
+        onClear={() => void onClear()}
+      />
     </>
   );
 }

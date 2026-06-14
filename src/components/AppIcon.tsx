@@ -11,7 +11,10 @@ interface AppIconProps {
     | "folder"
     | "phone"
     | "check"
-    | "sparkles";
+    | "sparkles"
+    | "history"
+    | "repeat"
+    | "trash";
   size?: number;
 }
 
@@ -50,7 +53,19 @@ const paths: Record<AppIconProps["name"], ReactNode> = {
     </>
   ),
   check: <path d="m5 12 4 4L19 6" />,
-  sparkles: <path d="m12 3 1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2L12 3Zm6 10 .7 2.3L21 16l-2.3.7L18 19l-.7-2.3L15 16l2.3-.7L18 13ZM5 14l.8 2.2L8 17l-2.2.8L5 20l-.8-2.2L2 17l2.2-.8L5 14Z" />
+  sparkles: <path d="m12 3 1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2L12 3Zm6 10 .7 2.3L21 16l-2.3.7L18 19l-.7-2.3L15 16l2.3-.7L18 13ZM5 14l.8 2.2L8 17l-2.2.8L5 20l-.8-2.2L2 17l2.2-.8L5 14Z" />,
+  history: (
+    <>
+      <path d="M3.5 12a8.5 8.5 0 1 0 2.2-5.7L3.5 8.5" />
+      <path d="M3.5 4.5v4h4M12 7.5V12l3 2" />
+    </>
+  ),
+  repeat: <path d="M20 7h-9a6 6 0 0 0-6 6v4m0 0-3-3m3 3 3-3M14 3l3-3m0 0 3 3m-3-3v4" />,
+  trash: (
+    <>
+      <path d="M4 7h16M9 3h6l1 4H8l1-4ZM7 7l1 14h8l1-14M10 11v6M14 11v6" />
+    </>
+  )
 };
 
 export function AppIcon({ name, size = 20 }: AppIconProps) {

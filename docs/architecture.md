@@ -16,6 +16,10 @@ The self-signed certificate contains the selected LAN IP as a subject alternativ
 
 The active share lives in memory as `Option<ShareSession>`. Its state includes `Ready`, `AwaitingApproval`, `Approved`, `Denied`, `Downloading`, `Completed`, `Expired`, `Cancelled`, and `Error`. Approval has a 60-second deadline. A background Tokio task expires share links, and manual cancellation marks the session cancelled immediately.
 
+## Transfer History
+
+Terminal send and receive states are copied into a bounded JSON history log in the app configuration directory. Records are keyed by transfer session UUID to prevent duplicate terminal events. Public Tauri responses contain display metadata only; local source and destination paths used by repeat actions remain in the Rust backend. Repeating a record validates those paths and creates a fresh session with a new token and the current security settings.
+
 ## File Streaming
 
 Single files stream from disk with Tokio async file I/O. Multi-file and folder shares are written into a bounded-memory ZIP stream without a temporary archive. Receive-mode uploads stream into randomized same-directory temporary files and are persisted without clobbering only after validation and completion. Progress events are throttled to avoid noisy UI updates.

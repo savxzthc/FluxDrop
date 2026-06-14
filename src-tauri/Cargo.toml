@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Send files from your PC to your phone with one QR scan."
 authors = ["FluxDrop Contributors"]
 license = "MIT"
-repository = "https://github.com/fluxdrop/fluxdrop"
+repository = "https://github.com/savxzthc/FluxDrop"
 edition = "2021"
 
 [lib]

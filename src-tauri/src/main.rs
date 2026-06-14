@@ -18,19 +18,26 @@ fn main() {
             fluxdrop_lib::commands::deny_upload,
             fluxdrop_lib::commands::get_settings,
             fluxdrop_lib::commands::update_settings,
+            fluxdrop_lib::commands::get_transfer_history,
+            fluxdrop_lib::commands::clear_transfer_history,
+            fluxdrop_lib::commands::repeat_transfer,
             fluxdrop_lib::commands::approve_download,
             fluxdrop_lib::commands::deny_download
         ])
         .setup(|app| {
-            let settings_path = app
-                .path()
-                .app_config_dir()?
-                .join(fluxdrop_lib::settings::SETTINGS_FILE_NAME);
+            let config_dir = app.path().app_config_dir()?;
+            let settings_path = config_dir.join(fluxdrop_lib::settings::SETTINGS_FILE_NAME);
+            let history_path = config_dir.join(fluxdrop_lib::history::HISTORY_FILE_NAME);
             let settings = fluxdrop_lib::settings::load(&settings_path).unwrap_or_else(|err| {
                 eprintln!("{err}; secure defaults will be used for this run.");
                 fluxdrop_lib::settings::AppSettings::default()
             });
-            let state = AppState::with_settings(settings, Some(settings_path));
+            let history = fluxdrop_lib::history::load(&history_path).unwrap_or_else(|err| {
+                eprintln!("{err}; transfer history will start empty for this run.");
+                Vec::new()
+            });
+            let state =
+                AppState::with_storage(settings, Some(settings_path), history, Some(history_path));
             app.manage(state.clone());
             fluxdrop_lib::tray::setup(app)?;
             fluxdrop_lib::share::spawn_expiration_task(state.clone(), app.handle().clone());

@@ -806,24 +806,29 @@ async fn mark_upload_approval_timed_out(
     app_state: &AppState,
     token: &str,
 ) -> Option<ReceiveStatusInfo> {
-    let mut guard = app_state.write().await;
-    let local_address = guard
-        .server
-        .as_ref()
-        .map(|server| server.address.to_string());
-    let receive = guard.receive_session.as_mut()?;
-    if receive.token != token
-        || !matches!(receive.status, ShareStatus::AwaitingApproval)
-        || receive
-            .approval_deadline
-            .is_some_and(|deadline| Utc::now() < deadline)
-    {
-        return None;
-    }
-    receive.deny(true);
-    let message = Some("Phone upload approval timed out after 60 seconds.".to_string());
-    let info = receive.status_info(local_address, message.clone());
-    guard.last_request_status = message;
+    let (info, terminal_receive) = {
+        let mut guard = app_state.write().await;
+        let local_address = guard
+            .server
+            .as_ref()
+            .map(|server| server.address.to_string());
+        let receive = guard.receive_session.as_mut()?;
+        if receive.token != token
+            || !matches!(receive.status, ShareStatus::AwaitingApproval)
+            || receive
+                .approval_deadline
+                .is_some_and(|deadline| Utc::now() < deadline)
+        {
+            return None;
+        }
+        receive.deny(true);
+        let message = Some("Phone upload approval timed out after 60 seconds.".to_string());
+        let info = receive.status_info(local_address, message.clone());
+        let terminal_receive = receive.clone();
+        guard.last_request_status = message;
+        (info, terminal_receive)
+    };
+    let _ = crate::history::record_receive(app_state, &terminal_receive).await;
     Some(info)
 }
 
@@ -846,36 +851,50 @@ async fn mark_upload_completed(
     token: &str,
     bytes_received: u64,
 ) -> Option<ReceiveStatusInfo> {
-    let mut guard = app_state.write().await;
-    let local_address = guard
-        .server
-        .as_ref()
-        .map(|server| server.address.to_string());
-    let receive = guard.receive_session.as_mut()?;
-    if receive.token != token {
-        return None;
-    }
-    receive.bytes_received = bytes_received;
-    receive.status = ShareStatus::Completed;
-    receive.expires_at = Utc::now();
-    let message = Some("Phone upload completed.".to_string());
-    let info = receive.status_info(local_address, message.clone());
-    guard.last_request_status = message;
+    let (info, terminal_receive) = {
+        let mut guard = app_state.write().await;
+        let local_address = guard
+            .server
+            .as_ref()
+            .map(|server| server.address.to_string());
+        let receive = guard.receive_session.as_mut()?;
+        if receive.token != token {
+            return None;
+        }
+        receive.bytes_received = bytes_received;
+        receive.status = ShareStatus::Completed;
+        receive.expires_at = Utc::now();
+        let message = Some("Phone upload completed.".to_string());
+        let info = receive.status_info(local_address, message.clone());
+        let terminal_receive = receive.clone();
+        guard.last_request_status = message;
+        (info, terminal_receive)
+    };
+    let _ = crate::history::record_receive(app_state, &terminal_receive).await;
     Some(info)
 }
 
 async fn set_upload_error(state: &HttpState, message: &str) {
-    let mut guard = state.app_state.write().await;
-    let local_address = guard
-        .server
-        .as_ref()
-        .map(|server| server.address.to_string());
-    if let Some(receive) = guard.receive_session.as_mut() {
-        receive.status = ShareStatus::Error(message.to_string());
-        let info = receive.status_info(local_address, Some(message.to_string()));
-        events::emit_share_status(state.app.as_ref(), "upload_interrupted", &info);
+    let terminal_receive = {
+        let mut guard = state.app_state.write().await;
+        let local_address = guard
+            .server
+            .as_ref()
+            .map(|server| server.address.to_string());
+        let terminal_receive = if let Some(receive) = guard.receive_session.as_mut() {
+            receive.status = ShareStatus::Error(message.to_string());
+            let info = receive.status_info(local_address, Some(message.to_string()));
+            events::emit_share_status(state.app.as_ref(), "upload_interrupted", &info);
+            Some(receive.clone())
+        } else {
+            None
+        };
+        guard.last_request_status = Some(message.to_string());
+        terminal_receive
+    };
+    if let Some(receive) = terminal_receive.as_ref() {
+        let _ = crate::history::record_receive(&state.app_state, receive).await;
     }
-    guard.last_request_status = Some(message.to_string());
 }
 
 async fn unique_destination_path(folder: &std::path::Path, file_name: &str) -> std::path::PathBuf {
@@ -1180,24 +1199,29 @@ fn spawn_approval_timeout(state: HttpState, token: String) {
 }
 
 async fn mark_approval_timed_out(app_state: &AppState, token: &str) -> Option<ShareStatusInfo> {
-    let mut guard = app_state.write().await;
-    let local_address = guard
-        .server
-        .as_ref()
-        .map(|server| server.address.to_string());
-    let share = guard.current_share.as_mut()?;
-    if share.token != token
-        || !matches!(share.status, ShareStatus::AwaitingApproval)
-        || share
-            .approval_deadline
-            .is_some_and(|deadline| Utc::now() < deadline)
-    {
-        return None;
-    }
-    share.deny(true);
-    let last_request_status = Some("Download request timed out after 60 seconds.".to_string());
-    let info = share.status_info(local_address, last_request_status.clone());
-    guard.last_request_status = last_request_status;
+    let (info, terminal_share) = {
+        let mut guard = app_state.write().await;
+        let local_address = guard
+            .server
+            .as_ref()
+            .map(|server| server.address.to_string());
+        let share = guard.current_share.as_mut()?;
+        if share.token != token
+            || !matches!(share.status, ShareStatus::AwaitingApproval)
+            || share
+                .approval_deadline
+                .is_some_and(|deadline| Utc::now() < deadline)
+        {
+            return None;
+        }
+        share.deny(true);
+        let last_request_status = Some("Download request timed out after 60 seconds.".to_string());
+        let info = share.status_info(local_address, last_request_status.clone());
+        let terminal_share = share.clone();
+        guard.last_request_status = last_request_status;
+        (info, terminal_share)
+    };
+    let _ = crate::history::record_share(app_state, &terminal_share).await;
     Some(info)
 }
 
@@ -1223,33 +1247,48 @@ async fn update_progress(
 }
 
 async fn mark_completed(app_state: &AppState, token: &str) -> Option<ShareStatusInfo> {
-    let mut guard = app_state.write().await;
-    let local_address = guard
-        .server
-        .as_ref()
-        .map(|server| server.address.to_string());
-    let last_request_status = Some("Download completed.".to_string());
-    guard.last_request_status = last_request_status.clone();
-    let share = guard.current_share.as_mut()?;
-    if share.token != token {
-        return None;
-    }
-    share.mark_download_completed();
-    Some(share.status_info(local_address, last_request_status))
+    let (info, terminal_share) = {
+        let mut guard = app_state.write().await;
+        let local_address = guard
+            .server
+            .as_ref()
+            .map(|server| server.address.to_string());
+        let last_request_status = Some("Download completed.".to_string());
+        guard.last_request_status = last_request_status.clone();
+        let share = guard.current_share.as_mut()?;
+        if share.token != token {
+            return None;
+        }
+        share.mark_download_completed();
+        (
+            share.status_info(local_address, last_request_status),
+            share.clone(),
+        )
+    };
+    let _ = crate::history::record_share(app_state, &terminal_share).await;
+    Some(info)
 }
 
 async fn set_error_status(state: &HttpState, message: &str) {
-    let mut guard = state.app_state.write().await;
-    let local_address = guard
-        .server
-        .as_ref()
-        .map(|server| server.address.to_string());
-    let last_request_status = Some(message.to_string());
-    guard.last_request_status = last_request_status.clone();
-    if let Some(share) = guard.current_share.as_mut() {
-        share.status = ShareStatus::Error(message.to_string());
-        let info = share.status_info(local_address, last_request_status);
-        events::emit_share_status(state.app.as_ref(), "download_interrupted", &info);
+    let terminal_share = {
+        let mut guard = state.app_state.write().await;
+        let local_address = guard
+            .server
+            .as_ref()
+            .map(|server| server.address.to_string());
+        let last_request_status = Some(message.to_string());
+        guard.last_request_status = last_request_status.clone();
+        if let Some(share) = guard.current_share.as_mut() {
+            share.status = ShareStatus::Error(message.to_string());
+            let info = share.status_info(local_address, last_request_status);
+            events::emit_share_status(state.app.as_ref(), "download_interrupted", &info);
+            Some(share.clone())
+        } else {
+            None
+        }
+    };
+    if let Some(share) = terminal_share.as_ref() {
+        let _ = crate::history::record_share(&state.app_state, share).await;
     }
 }
 
@@ -1770,6 +1809,10 @@ mod tests {
         let state = AppState::new();
         state.write().await.current_share = Some(share);
         assert!(mark_approval_timed_out(&state, &token).await.is_some());
+        assert_eq!(
+            state.read().await.history[0].outcome,
+            crate::history::TransferOutcome::TimedOut
+        );
         let response = request(build_router(state, None), &format!("/d/{token}")).await;
         assert_eq!(response.status(), StatusCode::REQUEST_TIMEOUT);
         let body = response
@@ -1782,6 +1825,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn completed_download_is_added_to_history() {
+        let temp = tempfile::NamedTempFile::new().expect("temp");
+        let share = ShareSession::new(
+            temp.path().to_path_buf(),
+            "file.txt".into(),
+            "file.txt".into(),
+            0,
+            "text/plain".into(),
+        );
+        let token = share.token.clone();
+        let state = AppState::new();
+        state.write().await.current_share = Some(share);
+
+        assert!(mark_completed(&state, &token).await.is_some());
+
+        let guard = state.read().await;
+        assert_eq!(guard.history.len(), 1);
+        assert_eq!(
+            guard.history[0].outcome,
+            crate::history::TransferOutcome::Completed
+        );
+    }
+
+    #[tokio::test]
     async fn test_zip_archive_stream_is_valid_and_preserves_paths() {
         let directory = tempfile::tempdir().expect("tempdir");
         let first = directory.path().join("one.txt");
@@ -1790,13 +1857,13 @@ mod tests {
         std::fs::write(&second, b"second").expect("write second");
         let entries = vec![
             ArchiveEntrySource {
-                source_path: Some(first),
+                source_path: Some(first.clone()),
                 archive_path: "bundle/one.txt".to_string(),
                 size: 3,
                 is_directory: false,
             },
             ArchiveEntrySource {
-                source_path: Some(second),
+                source_path: Some(second.clone()),
                 archive_path: "bundle/nested/two.txt".to_string(),
                 size: 6,
                 is_directory: false,
@@ -1806,6 +1873,7 @@ mod tests {
             SharePayload::ZipArchive {
                 entries: entries.clone(),
             },
+            vec![first, second],
             "bundle.zip".into(),
             "bundle.zip".into(),
             9,
