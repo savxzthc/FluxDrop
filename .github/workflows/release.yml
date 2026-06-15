@@ -32,18 +32,50 @@ jobs:
       - name: Verify release version
         run: npm run release:check -- ${{ github.ref_name }}
 
-      - name: Build installers and create draft release
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: v__VERSION__
-          releaseName: FluxDrop v__VERSION__
-          releaseBody: |
-            Download the NSIS setup executable for the normal Windows installation experience.
-            The MSI package is also provided for managed deployments.
+      - name: Build installers and portable executable
+        run: |
+          npm run tauri build -- --bundles nsis,msi
+          npm run tauri build -- --no-bundle
 
-            This release is unsigned, so Windows SmartScreen may ask for confirmation.
-          releaseDraft: true
-          prerelease: false
-          args: --bundles nsis,msi
+      - name: Prepare release assets
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          $assets = "release-assets"
+          New-Item -ItemType Directory -Path $assets -Force | Out-Null
+
+          Copy-Item "src-tauri/target/release/bundle/nsis/FluxDrop_${version}_x64-setup.exe" $assets
+          Copy-Item "src-tauri/target/release/bundle/msi/FluxDrop_${version}_x64_en-US.msi" $assets
+          Copy-Item "src-tauri/target/release/fluxdrop.exe" "$assets/FluxDrop_${version}_x64-portable.exe"
+
+          Get-ChildItem $assets -File |
+            Sort-Object Name |
+            ForEach-Object {
+              $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              "$hash  $($_.Name)"
+            } |
+            Set-Content "$assets/SHA256SUMS.txt" -Encoding utf8
+
+          @"
+          Download ``FluxDrop_${version}_x64-setup.exe`` for the normal Windows installation experience.
+          Use the MSI package for managed deployment, or ``FluxDrop_${version}_x64-portable.exe`` to run FluxDrop without installing it.
+
+          The portable executable requires the Microsoft Edge WebView2 Runtime included with supported Windows 10 and 11 installations.
+
+          These binaries are unsigned, so Windows SmartScreen may ask for confirmation. Verify downloads against ``SHA256SUMS.txt``.
+          "@ | Set-Content "release-notes.md" -Encoding utf8
+
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          gh release create "${{ github.ref_name }}" `
+            --verify-tag `
+            --title "FluxDrop ${{ github.ref_name }}" `
+            --notes-file "release-notes.md" `
+            "release-assets/FluxDrop_${version}_x64-setup.exe" `
+            "release-assets/FluxDrop_${version}_x64_en-US.msi" `
+            "release-assets/FluxDrop_${version}_x64-portable.exe" `
+            "release-assets/SHA256SUMS.txt"

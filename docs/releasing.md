@@ -1,9 +1,11 @@
 # Releasing FluxDrop
 
-FluxDrop publishes Windows installers from GitHub Actions. A version tag creates a draft GitHub Release containing:
+FluxDrop publishes Windows binaries from GitHub Actions. A version tag creates a GitHub Release containing:
 
 - an NSIS setup executable for normal installation;
-- an MSI package for managed deployment.
+- an MSI package for managed deployment;
+- a portable executable that runs without installation;
+- a SHA-256 checksum file for all published binaries.
 
 ## Prepare a release
 
@@ -33,7 +35,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The `Release` workflow validates the tag against all three manifests, builds NSIS and MSI installers on Windows, and creates a draft GitHub Release. Review its notes and assets before publishing it.
+The `Release` workflow validates the tag against all three manifests, builds the NSIS installer, MSI package, and portable executable on Windows, then publishes the GitHub Release.
 
 ## Code signing
 
