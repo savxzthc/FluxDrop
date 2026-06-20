@@ -137,6 +137,28 @@ export function SettingsCard({ settings, addresses, onSave }: SettingsCardProps)
             <small>Recommended. The phone waits until this PC approves the transfer.</small>
           </span>
         </label>
+        <label className="toggle-row">
+          <input
+            type="checkbox"
+            checked={draft.shell_integration}
+            onChange={(event) => setDraft({ ...draft, shell_integration: event.target.checked })}
+          />
+          <span>
+            <strong>Right-click &quot;Send with FluxDrop&quot;</strong>
+            <small>Add a Send shortcut to the Windows Explorer menu for files and folders.</small>
+          </span>
+        </label>
+        <label className="toggle-row">
+          <input
+            type="checkbox"
+            checked={draft.global_hotkey}
+            onChange={(event) => setDraft({ ...draft, global_hotkey: event.target.checked })}
+          />
+          <span>
+            <strong>Global hotkey</strong>
+            <small>Press Ctrl + Shift + D anywhere to bring FluxDrop to the front.</small>
+          </span>
+        </label>
       </div>
       {message ? <p className="settings-message">{message}</p> : null}
     </section>

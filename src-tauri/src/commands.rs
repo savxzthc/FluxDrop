@@ -13,7 +13,7 @@ use qrcode::render::svg;
 use qrcode::QrCode;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
@@ -398,6 +398,61 @@ pub async fn deny_upload(state: State<'_, AppState>, app: AppHandle) -> Result<(
 }
 
 #[tauri::command]
+pub async fn take_pending_shell_share(
+    state: State<'_, AppState>,
+) -> Result<Option<Vec<String>>, String> {
+    Ok(state.write().await.ready_shell_paths.take())
+}
+
+const SHELL_SHARE_DEBOUNCE_MS: u64 = 500;
+
+pub fn queue_shell_share(app: AppHandle, app_state: AppState, paths: Vec<String>) {
+    if paths.is_empty() {
+        focus_main_window(&app);
+        return;
+    }
+    tauri::async_runtime::spawn(async move {
+        let epoch = {
+            let mut guard = app_state.write().await;
+            guard.pending_shell_paths.extend(paths);
+            guard.shell_share_epoch = guard.shell_share_epoch.wrapping_add(1);
+            guard.shell_share_epoch
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(SHELL_SHARE_DEBOUNCE_MS)).await;
+        let ready = {
+            let mut guard = app_state.write().await;
+            if guard.shell_share_epoch != epoch || guard.pending_shell_paths.is_empty() {
+                return;
+            }
+            let drained = std::mem::take(&mut guard.pending_shell_paths);
+            guard.ready_shell_paths = Some(drained.clone());
+            drained
+        };
+        focus_main_window(&app);
+        let _ = app.emit("shell_share", ready);
+    });
+}
+
+fn focus_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+fn apply_global_hotkey(app: &AppHandle, enabled: bool) {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+    let shortcut = crate::shell_integration::global_shortcut();
+    let manager = app.global_shortcut();
+    if enabled {
+        let _ = manager.register(shortcut);
+    } else {
+        let _ = manager.unregister(shortcut);
+    }
+}
+
+#[tauri::command]
 pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
     Ok(state.read().await.settings.clone())
 }
@@ -421,15 +476,24 @@ pub async fn update_settings(
     }
     let selected_ip =
         network::configured_ip_address(&addresses, new_settings.preferred_lan_ip.as_deref());
-    let (path, old_server_ip) = {
+    let (path, old_server_ip, previous_shell_integration, previous_global_hotkey) = {
         let guard = app_state.read().await;
         (
             guard.settings_path.clone(),
             guard.server.as_ref().map(|server| server.address.ip()),
+            guard.settings.shell_integration,
+            guard.settings.global_hotkey,
         )
     };
     let path = path.ok_or_else(|| "FluxDrop settings storage is not initialized.".to_string())?;
     settings::save(&path, &new_settings)?;
+
+    if new_settings.shell_integration != previous_shell_integration {
+        crate::shell_integration::apply_registration(new_settings.shell_integration)?;
+    }
+    if new_settings.global_hotkey != previous_global_hotkey {
+        apply_global_hotkey(&app, new_settings.global_hotkey);
+    }
 
     if old_server_ip.is_some_and(|current| current != selected_ip) {
         let (server, share_info, receive_info, terminal_share, terminal_receive) = {

@@ -37,6 +37,7 @@ import {
   ShareInfo,
   ShareStatusInfo,
   startReceive,
+  takePendingShellShare,
   updateSettings
 } from "./lib/api";
 
@@ -49,7 +50,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   approval_required: true,
   preferred_lan_ip: null,
   max_upload_bytes: 2 * 1024 * 1024 * 1024,
-  theme: "system"
+  theme: "system",
+  shell_integration: false,
+  global_hotkey: false
 };
 
 const VIEW_COPY: Record<AppView, { eyebrow: string; title: string }> = {
@@ -81,6 +84,7 @@ export default function App() {
     storedTheme === "dark" || storedTheme === "light" || storedTheme === "system" ? storedTheme : "system"
   );
   const samples = useRef<SpeedSample[]>([]);
+  const lastShellShare = useRef<{ key: string; at: number } | null>(null);
   const resolvedTheme =
     themePreference === "dark" || themePreference === "light"
       ? themePreference
@@ -116,6 +120,11 @@ export default function App() {
       })
       .catch(() => undefined);
     getTransferHistory().then(setHistory).catch(() => setHistory([]));
+    takePendingShellShare()
+      .then((paths) => {
+        if (paths && paths.length > 0) handleShellPaths(paths);
+      })
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -197,6 +206,13 @@ export default function App() {
         if (paths.length > 0) void beginShare(paths);
       });
       unlisteners.push(dropUnlisten);
+      const shellShareUnlisten = await listen<string[]>("shell_share", (event) => {
+        const paths = Array.isArray(event.payload) ? event.payload : [];
+        if (paths.length > 0) handleShellPaths(paths);
+      });
+      unlisteners.push(shellShareUnlisten);
+      const shellFocusUnlisten = await listen("shell_focus", () => setView("send"));
+      unlisteners.push(shellFocusUnlisten);
     };
     void subscribe().catch(() => undefined);
     return () => unlisteners.forEach((unlisten) => unlisten());
@@ -215,6 +231,18 @@ export default function App() {
     const elapsed = (last.time - first.time) / 1000;
     return elapsed > 0 ? Math.max(0, (last.bytes - first.bytes) / elapsed) : 0;
   }, [status?.bytes_sent, now]);
+
+  function handleShellPaths(paths: string[]) {
+    if (!paths || paths.length === 0) return;
+    const key = paths.join("|");
+    const at = Date.now();
+    if (lastShellShare.current && lastShellShare.current.key === key && at - lastShellShare.current.at < 4000) {
+      return;
+    }
+    lastShellShare.current = { key, at };
+    setView("send");
+    void beginShare(paths);
+  }
 
   async function beginShare(filePaths: string[]) {
     setError(null);

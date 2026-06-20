@@ -24,6 +24,8 @@ pub struct AppSettings {
     pub preferred_lan_ip: Option<String>,
     pub max_upload_bytes: u64,
     pub theme: ThemePreference,
+    pub shell_integration: bool,
+    pub global_hotkey: bool,
 }
 
 impl Default for AppSettings {
@@ -35,6 +37,8 @@ impl Default for AppSettings {
             preferred_lan_ip: None,
             max_upload_bytes: 2 * 1024 * 1024 * 1024,
             theme: ThemePreference::System,
+            shell_integration: false,
+            global_hotkey: false,
         }
     }
 }

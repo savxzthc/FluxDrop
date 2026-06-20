@@ -32,6 +32,9 @@ pub struct RuntimeState {
     pub settings_path: Option<PathBuf>,
     pub history: Vec<HistoryRecord>,
     pub history_path: Option<PathBuf>,
+    pub pending_shell_paths: Vec<String>,
+    pub ready_shell_paths: Option<Vec<String>>,
+    pub shell_share_epoch: u64,
 }
 
 pub struct ServerHandle {
@@ -69,6 +72,9 @@ impl AppState {
                 settings_path,
                 history,
                 history_path,
+                pending_shell_paths: Vec::new(),
+                ready_shell_paths: None,
+                shell_share_epoch: 0,
             })),
         }
     }

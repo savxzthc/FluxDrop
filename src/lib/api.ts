@@ -100,6 +100,8 @@ export interface AppSettings {
   preferred_lan_ip: string | null;
   max_upload_bytes: number;
   theme: "system" | "light" | "dark";
+  shell_integration: boolean;
+  global_hotkey: boolean;
 }
 
 export interface CreateShareOptions {
@@ -193,4 +195,8 @@ export function clearTransferHistory(): Promise<void> {
 
 export function repeatTransfer(historyId: string): Promise<RepeatedTransfer> {
   return invoke("repeat_transfer", { historyId });
+}
+
+export function takePendingShellShare(): Promise<string[] | null> {
+  return invoke("take_pending_shell_share");
 }
