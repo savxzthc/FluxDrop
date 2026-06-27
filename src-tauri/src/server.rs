@@ -707,7 +707,7 @@ async fn upload_file(
         )
             .into_response();
     }
-    if output.flush().await.is_err() || output.sync_all().await.is_err() {
+    if output.flush().await.is_err() {
         drop(output);
         drop(temp_path);
         set_upload_error(
@@ -947,7 +947,7 @@ fn single_file_body(state: HttpState, snapshot: &ShareSnapshot, file: tokio::fs:
     let file_size = snapshot.file_size;
     let stream = stream! {
         let mut file = file;
-        let mut buffer = vec![0_u8; 64 * 1024];
+        let mut buffer = vec![0_u8; 512 * 1024];
         let mut sent = 0_u64;
         let mut last_emit = Instant::now() - Duration::from_millis(250);
 
@@ -987,7 +987,7 @@ fn zip_archive_body(
     snapshot: &ShareSnapshot,
     entries: Vec<ArchiveEntrySource>,
 ) -> Body {
-    let (writer, reader) = tokio::io::duplex(128 * 1024);
+    let (writer, reader) = tokio::io::duplex(1024 * 1024);
     let token = snapshot.token.clone();
     tokio::spawn(async move {
         match write_zip_archive(&state, &token, entries, writer).await {
@@ -1891,7 +1891,7 @@ mod tests {
             app_state,
             app: None,
         };
-        let (writer, mut reader) = tokio::io::duplex(1024);
+        let (writer, mut reader) = tokio::io::duplex(1024 * 1024);
         let writer_state = http_state.clone();
         let writer_token = token.clone();
         let task = tokio::spawn(async move {

@@ -64,6 +64,20 @@ Transfer history is stored locally in the app configuration directory. It contai
 
 Windows installers are published on the [GitHub Releases page](https://github.com/savxzthc/FluxDrop/releases). Each tagged release includes both an NSIS setup executable and an MSI package.
 
+## Website
+
+The public website lives in [`website/`](website/) and builds separately from the Tauri frontend.
+
+```powershell
+npm run site:dev
+npm run site:build
+npm run site:preview
+npm run site:preview:secure
+npm run site:audit
+```
+
+The production output is written to `site-dist/`. The secure preview applies the generated deployment headers locally on `http://127.0.0.1:8766`.
+
 ## Development Setup
 
 ```powershell

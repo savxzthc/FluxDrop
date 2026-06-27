@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-elem 'self'; style-src-attr 'unsafe-inline'; img-src 'self'; font-src 'none'; connect-src 'none'; media-src 'none'; object-src 'none'; child-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types 'none'"
+    />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="FluxDrop sends files directly between your Windows PC and phone over local Wi-Fi. No account, cloud upload, or phone app."
+    />
+    <meta name="theme-color" content="#0d1118" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="FluxDrop - Local file transfer, one scan away" />
+    <meta
+      property="og:description"
+      content="Move files directly between your Windows PC and phone over local Wi-Fi. No account, cloud upload, or phone app."
+    />
+    <title>FluxDrop - Local file transfer, one scan away</title>
+    <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./assets/styles.css" />
+    <script type="module" src="./assets/site.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header" data-site-header>
+      <div class="shell header-inner">
+        <a class="brand" href="./" aria-label="FluxDrop home">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i></span>
+          <span>FluxDrop</span>
+        </a>
+        <nav class="desktop-nav" aria-label="Primary navigation">
+          <a href="#how-it-works">How it works</a>
+          <a href="#features">Features</a>
+          <a href="./security.html">Security</a>
+          <a href="./support.html">Support</a>
+        </nav>
+        <div class="header-actions">
+          <a
+            class="text-link desktop-only"
+            href="https://github.com/savxzthc/FluxDrop"
+            target="_blank"
+            rel="noopener noreferrer"
+          >GitHub <span aria-hidden="true">&nearr;</span></a>
+          <a
+            class="button button-small"
+            href="https://github.com/savxzthc/FluxDrop/releases"
+            target="_blank"
+            rel="noopener noreferrer"
+          >Download</a>
+          <button
+            class="menu-button"
+            type="button"
+            aria-label="Open navigation"
+            aria-expanded="false"
+            aria-controls="mobile-menu"
+            data-menu-toggle
+          ><span></span><span></span></button>
+        </div>
+      </div>
+      <nav class="mobile-menu shell" id="mobile-menu" aria-label="Mobile navigation" data-mobile-menu hidden>
+        <a href="#how-it-works">How it works</a>
+        <a href="#features">Features</a>
+        <a href="./security.html">Security</a>
+        <a href="./support.html">Support</a>
+        <a href="https://github.com/savxzthc/FluxDrop" target="_blank" rel="noopener noreferrer">View source</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero">
+        <div class="hero-glow" aria-hidden="true"></div>
+        <div class="shell hero-grid">
+          <div class="hero-copy" data-reveal>
+            <div class="eyebrow"><span></span>Open source for Windows 10 and 11</div>
+            <h1>Move files across the room, <em>not around the world.</em></h1>
+            <p class="hero-summary">
+              FluxDrop sends files directly between your PC and phone over local Wi-Fi.
+              Scan one QR code. No account, cloud upload, or phone app.
+            </p>
+            <div class="hero-actions">
+              <a
+                class="button button-primary"
+                href="https://github.com/savxzthc/FluxDrop/releases"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <svg aria-hidden="true" viewBox="0 0 24 24">
+                  <path d="M12 3v12m0 0 4-4m-4 4-4-4M5 20h14" />
+                </svg>
+                Download for Windows
+              </a>
+              <a
+                class="button button-quiet"
+                href="https://github.com/savxzthc/FluxDrop"
+                target="_blank"
+                rel="noopener noreferrer"
+              >Browse the source <span aria-hidden="true">&rarr;</span></a>
+            </div>
+            <p class="hero-note">Free under the MIT license. NSIS and MSI installers.</p>
+            <div class="trust-row" aria-label="Product highlights">
+              <span><i class="status-dot"></i>Local HTTPS</span>
+              <span>160-bit links</span>
+              <span>PC approval</span>
+            </div>
+          </div>
+
+          <div class="product-stage" data-reveal>
+            <div class="stage-orbit stage-orbit-one" aria-hidden="true"></div>
+            <div class="stage-orbit stage-orbit-two" aria-hidden="true"></div>
+            <figure class="app-window">
+              <div class="window-bar">
+                <span class="window-dot"></span>
+                <span class="window-dot"></span>
+                <span class="window-dot"></span>
+                <span>FluxDrop</span>
+              </div>
+              <img
+                src="./assets/fluxdrop-app.png"
+                width="1280"
+                height="720"
+                alt="FluxDrop desktop app showing its Send workspace"
+              />
+            </figure>
+            <div class="phone-card" aria-hidden="true">
+              <div class="phone-top"><span>9:41</span><span>Wi-Fi</span></div>
+              <div class="phone-brand"><span class="mini-mark"></span>FluxDrop</div>
+              <div class="phone-check" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="m6.5 12.5 3.5 3.5 7.5-8" /></svg>
+              </div>
+              <strong>Ready to download</strong>
+              <p>project-assets.zip</p>
+              <button type="button" tabindex="-1">Download 248 MB</button>
+              <small>Direct from your PC</small>
+            </div>
+            <div class="stage-pill stage-pill-top"><i class="status-dot"></i>Phone approved</div>
+            <div class="stage-pill stage-pill-bottom">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 2.8 8 7 10 4.2-2 7-5.5 7-10V6l-7-3Z" /></svg>
+              Never touches the cloud
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="proof-strip">
+        <div class="shell proof-grid">
+          <div><strong>0</strong><span>accounts to create</span></div>
+          <div><strong>1</strong><span>QR scan to connect</span></div>
+          <div><strong>160-bit</strong><span>random transfer links</span></div>
+          <div><strong>100%</strong><span>open source</span></div>
+        </div>
+      </section>
+
+      <section class="section problem-section">
+        <div class="shell two-column">
+          <div data-reveal>
+            <span class="section-label">Nearby should be simple</span>
+            <h2>Your phone is three feet away. Why send the file through a data center?</h2>
+          </div>
+          <div class="problem-copy" data-reveal>
+            <p>
+              Cloud drives solve storage and collaboration. They are overkill when you only
+              need to move a file to the device beside you.
+            </p>
+            <p>
+              FluxDrop creates a temporary connection on your local network, then gets out of
+              the way. No upload queue. No storage quota. No cleanup later.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section section-tinted" id="how-it-works">
+        <div class="shell">
+          <div class="section-heading centered" data-reveal>
+            <span class="section-label">How it works</span>
+            <h2>From desktop to phone in three deliberate steps.</h2>
+            <p>FluxDrop keeps the workflow short without hiding the controls that keep it safe.</p>
+          </div>
+          <div class="steps-grid">
+            <article class="step-card" data-reveal>
+              <span class="step-number">01</span>
+              <div class="icon-box">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v9H4V7Zm0 4h16" /></svg>
+              </div>
+              <h3>Choose what to move</h3>
+              <p>Select one file, several files, or a folder. FluxDrop prepares large sets as a streaming ZIP.</p>
+            </article>
+            <article class="step-card" data-reveal>
+              <span class="step-number">02</span>
+              <div class="icon-box">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 4h6v6H4V4Zm10 0h6v6h-6V4ZM4 14h6v6H4v-6Zm11 0h2v2h-2v-2Zm3 0h2v6h-2v-6Zm-3 4h2v2h-2v-2Z" /></svg>
+              </div>
+              <h3>Scan with your phone</h3>
+              <p>Your camera opens a local connection page. Accept the one-time certificate prompt when required.</p>
+            </article>
+            <article class="step-card" data-reveal>
+              <span class="step-number">03</span>
+              <div class="icon-box">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 2.8 8 7 10 4.2-2 7-5.5 7-10V6l-7-3Zm-3 9 2 2 4-4" /></svg>
+              </div>
+              <h3>Approve and transfer</h3>
+              <p>Confirm the requesting phone on your PC. The file then travels directly over your Wi-Fi network.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="features">
+        <div class="shell">
+          <div class="section-heading split-heading" data-reveal>
+            <div>
+              <span class="section-label">Built for the whole handoff</span>
+              <h2>Fast when it should be. Careful where it matters.</h2>
+            </div>
+            <p>
+              FluxDrop handles both directions, keeps transfers visible, and gives temporary links a short life.
+            </p>
+          </div>
+          <div class="feature-grid">
+            <article class="feature-card feature-large feature-purple" data-reveal>
+              <div class="feature-copy">
+                <span class="feature-kicker">Send and receive</span>
+                <h3>One app for both sides of the exchange.</h3>
+                <p>
+                  Send files and folders to your phone, or switch to Receive mode and approve an upload back to your PC.
+                </p>
+              </div>
+              <div class="direction-visual" aria-hidden="true">
+                <div class="device desktop-device"><span></span></div>
+                <div class="transfer-line"><i></i><i></i><i></i></div>
+                <div class="device mobile-device"><span></span></div>
+              </div>
+            </article>
+            <article class="feature-card" data-reveal>
+              <div class="feature-icon green">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 2.8 8 7 10 4.2-2 7-5.5 7-10V6l-7-3Zm-3 9 2 2 4-4" /></svg>
+              </div>
+              <h3>Approval by default</h3>
+              <p>See the phone IP, filename, and size before a transfer begins. Approve or deny from the desktop.</p>
+            </article>
+            <article class="feature-card" data-reveal>
+              <div class="feature-icon amber">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+              </div>
+              <h3>Links with an expiration date</h3>
+              <p>Choose 5, 10, 30, or 60 minutes. Single-use links expire after a completed download by default.</p>
+            </article>
+            <article class="feature-card feature-wide" data-reveal>
+              <div>
+                <div class="feature-icon violet">
+                  <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 4h10l4 4v12H5V4Zm10 0v5h4M8 13h8M8 17h5" /></svg>
+                </div>
+                <h3>Folders without the memory spike</h3>
+                <p>
+                  Multiple files and nested folders become an on-the-fly ZIP with bounded memory use and sanitized paths.
+                </p>
+              </div>
+              <div class="zip-list" aria-hidden="true">
+                <div><span>design/hero.png</span><i>8.4 MB</i></div>
+                <div><span>docs/brief.pdf</span><i>2.1 MB</i></div>
+                <div><span>video/demo.mp4</span><i>238 MB</i></div>
+              </div>
+            </article>
+            <article class="feature-card feature-wide feature-dark" data-reveal>
+              <div>
+                <div class="feature-icon dark-icon">
+                  <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2-5.3L4 9m0-5v5h5M12 8v5l3 2" /></svg>
+                </div>
+                <h3>History that stays local</h3>
+                <p>Review outcomes and repeat prior setups without storing tokens, URLs, certificates, or file contents.</p>
+              </div>
+              <div class="history-list" aria-hidden="true">
+                <div><i class="status-dot"></i><span>brand-assets.zip</span><strong>Completed</strong></div>
+                <div><i class="status-dot amber-dot"></i><span>camera-roll.jpg</span><strong>Received</strong></div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section security-preview">
+        <div class="shell security-grid">
+          <div class="security-copy" data-reveal>
+            <span class="section-label light-label">Security without theater</span>
+            <h2>Local by design. Honest about the limits.</h2>
+            <p>
+              Token-bearing pages and file data use HTTPS after you accept FluxDrop's local,
+              self-signed certificate. Random links, expiration, rate limiting, and PC approval
+              reduce exposure without pretending a private Wi-Fi network is a zero-trust environment.
+            </p>
+            <a class="inline-link light-link" href="./security.html">Read the security model <span aria-hidden="true">&rarr;</span></a>
+          </div>
+          <div class="security-list" data-reveal>
+            <div>
+              <span>01</span>
+              <p><strong>Direct path</strong>Files travel between your devices, not through FluxDrop infrastructure.</p>
+            </div>
+            <div>
+              <span>02</span>
+              <p><strong>Short-lived access</strong>160-bit random tokens stay in memory and expire automatically.</p>
+            </div>
+            <div>
+              <span>03</span>
+              <p><strong>No telemetry</strong>No analytics, cloud account, phone-home request, or automatic update check.</p>
+            </div>
+            <div>
+              <span>04</span>
+              <p><strong>Clear boundaries</strong>Self-signed TLS does not stop an active attacker on a hostile network.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section open-source-section">
+        <div class="shell open-source-card" data-reveal>
+          <div>
+            <span class="section-label">Open source, end to end</span>
+            <h2>Trust the workflow because you can inspect it.</h2>
+            <p>
+              FluxDrop is built with Rust, Tauri, React, and TypeScript. The desktop client,
+              local server, security model, protocol, and release process are all public.
+            </p>
+            <div class="stack-row" aria-label="Technology stack">
+              <span>Rust</span><span>Tauri 2</span><span>React 19</span><span>TypeScript</span><span>MIT</span>
+            </div>
+          </div>
+          <div class="source-actions">
+            <a
+              class="button button-primary"
+              href="https://github.com/savxzthc/FluxDrop"
+              target="_blank"
+              rel="noopener noreferrer"
+            >Explore on GitHub</a>
+            <a
+              class="inline-link"
+              href="https://github.com/savxzthc/FluxDrop/tree/main/docs"
+              target="_blank"
+              rel="noopener noreferrer"
+            >Read the technical docs <span aria-hidden="true">&nearr;</span></a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section faq-section">
+        <div class="shell narrow-shell">
+          <div class="section-heading centered" data-reveal>
+            <span class="section-label">Questions, answered</span>
+            <h2>What people usually want to know first.</h2>
+          </div>
+          <div class="faq-list" data-reveal>
+            <details>
+              <summary>Does FluxDrop upload anything to the internet?<span></span></summary>
+              <p>No. The desktop app serves the transfer from your PC over the selected local network interface.</p>
+            </details>
+            <details>
+              <summary>Do I need to install an app on my phone?<span></span></summary>
+              <p>No. Your phone camera opens the transfer in a normal browser.</p>
+            </details>
+            <details>
+              <summary>Why does my phone show a certificate warning?<span></span></summary>
+              <p>
+                FluxDrop creates a self-signed certificate for your PC's local IP. Browsers cannot
+                automatically trust it, so the first connection may require an Advanced or Proceed action.
+              </p>
+            </details>
+            <details>
+              <summary>Can I send entire folders?<span></span></summary>
+              <p>Yes. FluxDrop streams multiple files and folder trees as a ZIP while keeping memory use bounded.</p>
+            </details>
+            <details>
+              <summary>Does it work outside my home network?<span></span></summary>
+              <p>No. FluxDrop is intentionally designed for devices on the same private local network.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section class="final-cta">
+        <div class="shell final-cta-inner" data-reveal>
+          <div>
+            <span class="section-label light-label">Your next transfer can stay nearby</span>
+            <h2>Choose. Scan. Approve. Done.</h2>
+            <p>Download FluxDrop for Windows 10 or 11. Free, open source, and built for local transfer.</p>
+          </div>
+          <div class="final-actions">
+            <a
+              class="button button-white"
+              href="https://github.com/savxzthc/FluxDrop/releases"
+              target="_blank"
+              rel="noopener noreferrer"
+            >Download for Windows</a>
+            <a class="button button-outline-light" href="./support.html">Read setup guide</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="shell footer-grid">
+        <div>
+          <a class="brand footer-brand" href="./">
+            <span class="brand-mark" aria-hidden="true"><i></i><i></i></span>
+            <span>FluxDrop</span>
+          </a>
+          <p>Local file transfer between your Windows PC and phone.</p>
+        </div>
+        <div class="footer-links">
+          <div>
+            <strong>Product</strong>
+            <a href="#how-it-works">How it works</a>
+            <a href="#features">Features</a>
+            <a href="./security.html">Security</a>
+          </div>
+          <div>
+            <strong>Project</strong>
+            <a href="https://github.com/savxzthc/FluxDrop" target="_blank" rel="noopener noreferrer">GitHub</a>
+            <a href="https://github.com/savxzthc/FluxDrop/releases" target="_blank" rel="noopener noreferrer">Releases</a>
+            <a href="https://github.com/savxzthc/FluxDrop/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
+          </div>
+          <div>
+            <strong>Help</strong>
+            <a href="./support.html">Support</a>
+            <a href="https://github.com/savxzthc/FluxDrop/issues" target="_blank" rel="noopener noreferrer">Issues</a>
+            <a href="https://github.com/savxzthc/FluxDrop/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT license</a>
+          </div>
+        </div>
+      </div>
+      <div class="shell footer-bottom">
+        <span>&copy; <span data-year></span> FluxDrop contributors.</span>
+        <span>No cloud. No account. No phone app.</span>
+      </div>
+    </footer>
+  </body>
+</html>

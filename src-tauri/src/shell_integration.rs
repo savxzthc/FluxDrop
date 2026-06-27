@@ -66,7 +66,7 @@ mod platform {
                 .create_subkey(menu_path)
                 .map_err(|err| format!("FluxDrop could not open its context-menu key: {err}"))?;
             menu_key
-                .set_value("", MENU_LABEL)
+                .set_value("", &MENU_LABEL)
                 .map_err(|err| format!("FluxDrop could not write the context-menu label: {err}"))?;
             menu_key
                 .set_value("Icon", &exe_display)

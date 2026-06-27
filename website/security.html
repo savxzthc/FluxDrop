@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-elem 'self'; style-src-attr 'unsafe-inline'; img-src 'self'; font-src 'none'; connect-src 'none'; media-src 'none'; object-src 'none'; child-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types 'none'"
+    />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Read FluxDrop's local transfer security model, protections, limitations, and vulnerability reporting process."
+    />
+    <meta name="theme-color" content="#0d1118" />
+    <title>Security - FluxDrop</title>
+    <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./assets/styles.css" />
+    <script type="module" src="./assets/site.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header" data-site-header>
+      <div class="shell header-inner">
+        <a class="brand" href="./" aria-label="FluxDrop home">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i></span>
+          <span>FluxDrop</span>
+        </a>
+        <nav class="desktop-nav" aria-label="Primary navigation">
+          <a href="./#how-it-works">How it works</a>
+          <a href="./#features">Features</a>
+          <a class="active" href="./security.html" aria-current="page">Security</a>
+          <a href="./support.html">Support</a>
+        </nav>
+        <div class="header-actions">
+          <a class="text-link desktop-only" href="https://github.com/savxzthc/FluxDrop" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">&nearr;</span></a>
+          <a class="button button-small" href="https://github.com/savxzthc/FluxDrop/releases" target="_blank" rel="noopener noreferrer">Download</a>
+          <button class="menu-button" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="mobile-menu" data-menu-toggle><span></span><span></span></button>
+        </div>
+      </div>
+      <nav class="mobile-menu shell" id="mobile-menu" aria-label="Mobile navigation" data-mobile-menu hidden>
+        <a href="./#how-it-works">How it works</a>
+        <a href="./#features">Features</a>
+        <a href="./security.html">Security</a>
+        <a href="./support.html">Support</a>
+        <a href="https://github.com/savxzthc/FluxDrop" target="_blank" rel="noopener noreferrer">View source</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="page-hero security-page-hero">
+        <div class="shell page-hero-grid">
+          <div data-reveal>
+            <div class="eyebrow"><span></span>Security model</div>
+            <h1>Security claims you can verify, with limits you can see.</h1>
+            <p>
+              FluxDrop reduces exposure with direct local transfer, HTTPS, strong random links,
+              short expirations, and explicit PC approval. It also states clearly what self-signed
+              local TLS cannot protect against.
+            </p>
+          </div>
+          <div class="security-seal" data-reveal aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 2.8 8 7 10 4.2-2 7-5.5 7-10V6l-7-3Zm-3 9 2 2 4-4" /></svg>
+            <span>Local first</span>
+            <strong>No security theater</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="shell">
+          <div class="section-heading centered" data-reveal>
+            <span class="section-label">What FluxDrop does</span>
+            <h2>Four layers around a short-lived local connection.</h2>
+          </div>
+          <div class="principles-grid">
+            <article data-reveal>
+              <span>01</span>
+              <h3>Keep the route local</h3>
+              <p>The server binds to a selected private LAN address instead of exposing every network interface.</p>
+            </article>
+            <article data-reveal>
+              <span>02</span>
+              <h3>Encrypt transfer traffic</h3>
+              <p>Token-bearing pages, metadata, uploads, and downloads use HTTPS after certificate acceptance.</p>
+            </article>
+            <article data-reveal>
+              <span>03</span>
+              <h3>Minimize the access window</h3>
+              <p>Links use 160 bits of CSPRNG entropy, live only in memory, and expire automatically.</p>
+            </article>
+            <article data-reveal>
+              <span>04</span>
+              <h3>Keep a human in the loop</h3>
+              <p>PC approval is required by default before a phone can download or upload a file.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section section-tinted">
+        <div class="shell security-explainer">
+          <div data-reveal>
+            <span class="section-label">The HTTPS connection</span>
+            <h2>Why your phone may show a warning the first time.</h2>
+            <p>
+              FluxDrop generates a certificate for the PC's selected local IP. Because it is
+              self-signed instead of issued by a public certificate authority, your browser cannot
+              automatically verify the PC's identity.
+            </p>
+            <p>
+              The QR code first opens a generic HTTP instruction page. The secure destination is
+              held in the URL fragment, which is not sent in that HTTP request. After you proceed
+              through the certificate screen, token-bearing requests and file data use HTTPS.
+            </p>
+          </div>
+          <div class="connection-diagram" data-reveal aria-label="FluxDrop connection sequence">
+            <div><span>1</span><strong>Scan</strong><small>Generic local page</small></div>
+            <i aria-hidden="true">&rarr;</i>
+            <div><span>2</span><strong>Accept</strong><small>Local certificate</small></div>
+            <i aria-hidden="true">&rarr;</i>
+            <div><span>3</span><strong>Transfer</strong><small>Encrypted HTTPS</small></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="shell">
+          <div class="section-heading split-heading" data-reveal>
+            <div>
+              <span class="section-label">Threat model</span>
+              <h2>Protection depends on the attacker.</h2>
+            </div>
+            <p>FluxDrop is designed for a trusted PC and phone on a trusted private network.</p>
+          </div>
+          <div class="threat-table" data-reveal>
+            <div class="threat-row threat-head">
+              <span>Threat</span><span>Mitigation</span><span>Coverage</span>
+            </div>
+            <div class="threat-row">
+              <strong>Passive Wi-Fi observation</strong>
+              <p>HTTPS after local certificate acceptance.</p>
+              <span class="coverage covered">Protected</span>
+            </div>
+            <div class="threat-row">
+              <strong>Link guessing</strong>
+              <p>160-bit random tokens plus per-IP rate limiting.</p>
+              <span class="coverage covered">Protected</span>
+            </div>
+            <div class="threat-row">
+              <strong>Someone sees the QR code</strong>
+              <p>PC approval, short expiration, and single-use links.</p>
+              <span class="coverage reduced">Reduced</span>
+            </div>
+            <div class="threat-row">
+              <strong>Active LAN man-in-the-middle</strong>
+              <p>Self-signed TLS does not authenticate the PC to the phone.</p>
+              <span class="coverage not-covered">Not prevented</span>
+            </div>
+            <div class="threat-row">
+              <strong>Compromised PC or phone</strong>
+              <p>Endpoint compromise is outside FluxDrop's threat model.</p>
+              <span class="coverage not-covered">Out of scope</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section security-practices">
+        <div class="shell practices-grid">
+          <div data-reveal>
+            <span class="section-label light-label">Use it safely</span>
+            <h2>A private network is part of the security boundary.</h2>
+          </div>
+          <ul data-reveal>
+            <li>Use FluxDrop on a home, office, or other network you trust.</li>
+            <li>Avoid guest Wi-Fi and public hotspots where client isolation or hostile peers may be present.</li>
+            <li>Confirm the requesting phone IP and file details before approving.</li>
+            <li>Cancel active links when you no longer need them.</li>
+            <li>Do not bypass a certificate warning if the local IP is not the one shown in FluxDrop.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="shell report-card" data-reveal>
+          <div>
+            <span class="section-label">Found a vulnerability?</span>
+            <h2>Report it privately.</h2>
+            <p>
+              Please use a GitHub private security advisory for token bypasses, path exposure,
+              remote code execution, or local network attack findings. Do not open a public issue first.
+            </p>
+          </div>
+          <div class="report-actions">
+            <a class="button button-primary" href="https://github.com/savxzthc/FluxDrop/security/advisories/new" target="_blank" rel="noopener noreferrer">Open private advisory</a>
+            <a class="inline-link" href="https://github.com/savxzthc/FluxDrop/blob/main/SECURITY.md" target="_blank" rel="noopener noreferrer">Read SECURITY.md <span aria-hidden="true">&nearr;</span></a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="shell footer-grid">
+        <div>
+          <a class="brand footer-brand" href="./"><span class="brand-mark" aria-hidden="true"><i></i><i></i></span><span>FluxDrop</span></a>
+          <p>Local file transfer between your Windows PC and phone.</p>
+        </div>
+        <div class="footer-links">
+          <div><strong>Product</strong><a href="./#how-it-works">How it works</a><a href="./#features">Features</a><a href="./security.html">Security</a></div>
+          <div><strong>Project</strong><a href="https://github.com/savxzthc/FluxDrop" target="_blank" rel="noopener noreferrer">GitHub</a><a href="https://github.com/savxzthc/FluxDrop/releases" target="_blank" rel="noopener noreferrer">Releases</a><a href="https://github.com/savxzthc/FluxDrop/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a></div>
+          <div><strong>Help</strong><a href="./support.html">Support</a><a href="https://github.com/savxzthc/FluxDrop/issues" target="_blank" rel="noopener noreferrer">Issues</a><a href="https://github.com/savxzthc/FluxDrop/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT license</a></div>
+        </div>
+      </div>
+      <div class="shell footer-bottom"><span>&copy; <span data-year></span> FluxDrop contributors.</span><span>No cloud. No account. No phone app.</span></div>
+    </footer>
+  </body>
+</html>

@@ -7,8 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-27
+
 ### Added
 
+- Public website with home, security, and support pages plus static build, secure preview, and security audit tooling.
+- Windows shell integration for Explorer-based send flows and a global shortcut entry point.
 - PC-side approval is now required by default before a phone can start a download.
 - The desktop shows the requesting phone IP, filename, size, and approve/deny actions.
 - Approval requests time out after 60 seconds with a distinct phone-facing timeout page.
@@ -33,12 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Website deployment headers enforce a restrictive CSP, Trusted Types, cross-origin isolation, no-referrer policy, and same-origin runtime assets.
 - Transfer traffic is encrypted against passive LAN observation after certificate acceptance.
 - Certificate material is persisted in the app configuration directory and regenerated when the selected LAN IP changes.
 - Documentation and UI explicitly disclose that self-signed TLS does not authenticate the PC or stop an active LAN man-in-the-middle.
 - Vite and its React plugin were upgraded to remove the audited vulnerable esbuild dependency.
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-06-15
 
 ### Added
 

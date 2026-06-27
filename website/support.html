@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-elem 'self'; style-src-attr 'unsafe-inline'; img-src 'self'; font-src 'none'; connect-src 'none'; media-src 'none'; object-src 'none'; child-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types 'none'"
+    />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Install FluxDrop, connect your phone, and troubleshoot local network, certificate, and Windows Firewall issues."
+    />
+    <meta name="theme-color" content="#0d1118" />
+    <title>Support - FluxDrop</title>
+    <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./assets/styles.css" />
+    <script type="module" src="./assets/site.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header" data-site-header>
+      <div class="shell header-inner">
+        <a class="brand" href="./" aria-label="FluxDrop home"><span class="brand-mark" aria-hidden="true"><i></i><i></i></span><span>FluxDrop</span></a>
+        <nav class="desktop-nav" aria-label="Primary navigation">
+          <a href="./#how-it-works">How it works</a>
+          <a href="./#features">Features</a>
+          <a href="./security.html">Security</a>
+          <a class="active" href="./support.html" aria-current="page">Support</a>
+        </nav>
+        <div class="header-actions">
+          <a class="text-link desktop-only" href="https://github.com/savxzthc/FluxDrop" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">&nearr;</span></a>
+          <a class="button button-small" href="https://github.com/savxzthc/FluxDrop/releases" target="_blank" rel="noopener noreferrer">Download</a>
+          <button class="menu-button" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="mobile-menu" data-menu-toggle><span></span><span></span></button>
+        </div>
+      </div>
+      <nav class="mobile-menu shell" id="mobile-menu" aria-label="Mobile navigation" data-mobile-menu hidden>
+        <a href="./#how-it-works">How it works</a><a href="./#features">Features</a><a href="./security.html">Security</a><a href="./support.html">Support</a><a href="https://github.com/savxzthc/FluxDrop" target="_blank" rel="noopener noreferrer">View source</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="page-hero support-page-hero">
+        <div class="shell page-hero-grid">
+          <div data-reveal>
+            <div class="eyebrow"><span></span>Setup and support</div>
+            <h1>Get from install to first transfer without guesswork.</h1>
+            <p>
+              FluxDrop needs a Windows PC, a phone, and one private Wi-Fi network.
+              Start here for installation, certificate onboarding, and connection fixes.
+            </p>
+            <a class="button button-primary" href="https://github.com/savxzthc/FluxDrop/releases" target="_blank" rel="noopener noreferrer">Download FluxDrop</a>
+          </div>
+          <div class="requirements-card" data-reveal>
+            <span>Requirements</span>
+            <ul>
+              <li><strong>PC</strong>Windows 10 or 11, x64</li>
+              <li><strong>Phone</strong>Modern iOS or Android browser</li>
+              <li><strong>Network</strong>Both devices on the same private Wi-Fi</li>
+              <li><strong>Account</strong>Not required</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="shell support-layout">
+          <aside class="support-nav" data-reveal>
+            <strong>On this page</strong>
+            <a href="#first-transfer">First transfer</a>
+            <a href="#certificate">Certificate prompt</a>
+            <a href="#connection">Connection problems</a>
+            <a href="#firewall">Windows Firewall</a>
+            <a href="#still-stuck">Still stuck?</a>
+          </aside>
+          <div class="support-content">
+            <section id="first-transfer" data-reveal>
+              <span class="section-label">First transfer</span>
+              <h2>Send a file to your phone.</h2>
+              <ol class="instruction-list">
+                <li><span>1</span><div><strong>Open FluxDrop</strong><p>Stay in the Send workspace and choose a file, several files, or a folder.</p></div></li>
+                <li><span>2</span><div><strong>Scan the QR code</strong><p>Use your phone camera while both devices are connected to the same Wi-Fi network.</p></div></li>
+                <li><span>3</span><div><strong>Complete certificate onboarding</strong><p>If prompted, use the browser's Advanced or Proceed action to open the secure local page.</p></div></li>
+                <li><span>4</span><div><strong>Approve on the PC</strong><p>Check the phone IP and file details, then approve the request in FluxDrop.</p></div></li>
+                <li><span>5</span><div><strong>Download on the phone</strong><p>Tap the download action. FluxDrop shows progress and the final outcome on the desktop.</p></div></li>
+              </ol>
+            </section>
+
+            <section id="certificate" data-reveal>
+              <span class="section-label">Certificate prompt</span>
+              <h2>Why the browser warning is expected.</h2>
+              <div class="callout">
+                <strong>FluxDrop uses a local self-signed certificate.</strong>
+                <p>
+                  It encrypts the transfer after acceptance, but your browser cannot verify it through
+                  a public certificate authority. Confirm that the IP matches the local address shown
+                  in FluxDrop before proceeding.
+                </p>
+              </div>
+              <p>
+                Browser labels differ. Look for an Advanced, Show details, or Continue option, then
+                proceed to the local IP. You normally repeat this only when the selected LAN IP changes
+                or the certificate is regenerated.
+              </p>
+            </section>
+
+            <section id="connection" data-reveal>
+              <span class="section-label">Connection problems</span>
+              <h2>If the phone cannot open the QR link.</h2>
+              <div class="check-grid">
+                <article><span>01</span><h3>Confirm the network</h3><p>Both devices must be on the same private Wi-Fi. Guest networks often isolate devices.</p></article>
+                <article><span>02</span><h3>Pause VPN software</h3><p>A VPN or virtual adapter can make FluxDrop select an address the phone cannot reach.</p></article>
+                <article><span>03</span><h3>Choose the LAN adapter</h3><p>Open Settings in FluxDrop and select the Wi-Fi address that matches your current network.</p></article>
+                <article><span>04</span><h3>Enter the URL manually</h3><p>Type the connection URL shown below the QR code into the phone browser.</p></article>
+              </div>
+            </section>
+
+            <section id="firewall" data-reveal>
+              <span class="section-label">Windows Firewall</span>
+              <h2>Allow FluxDrop on private networks.</h2>
+              <ol class="plain-steps">
+                <li>Open <strong>Windows Security</strong>.</li>
+                <li>Select <strong>Firewall &amp; network protection</strong>.</li>
+                <li>Choose <strong>Allow an app through firewall</strong>.</li>
+                <li>Allow FluxDrop for <strong>Private</strong> networks.</li>
+                <li>Leave <strong>Public</strong> unchecked unless you understand the additional exposure.</li>
+              </ol>
+            </section>
+
+            <section id="still-stuck" data-reveal>
+              <span class="section-label">Still stuck?</span>
+              <h2>Bring the details that make a bug actionable.</h2>
+              <p>
+                Include your Windows version, phone/browser, whether a VPN is active, the selected LAN
+                address, and the exact status shown in FluxDrop. Do not post active transfer URLs or tokens.
+              </p>
+              <div class="support-actions">
+                <a class="button button-primary" href="https://github.com/savxzthc/FluxDrop/issues/new/choose" target="_blank" rel="noopener noreferrer">Open a GitHub issue</a>
+                <a class="inline-link" href="./security.html">Reporting a security issue <span aria-hidden="true">&rarr;</span></a>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="shell footer-grid">
+        <div><a class="brand footer-brand" href="./"><span class="brand-mark" aria-hidden="true"><i></i><i></i></span><span>FluxDrop</span></a><p>Local file transfer between your Windows PC and phone.</p></div>
+        <div class="footer-links">
+          <div><strong>Product</strong><a href="./#how-it-works">How it works</a><a href="./#features">Features</a><a href="./security.html">Security</a></div>
+          <div><strong>Project</strong><a href="https://github.com/savxzthc/FluxDrop" target="_blank" rel="noopener noreferrer">GitHub</a><a href="https://github.com/savxzthc/FluxDrop/releases" target="_blank" rel="noopener noreferrer">Releases</a><a href="https://github.com/savxzthc/FluxDrop/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a></div>
+          <div><strong>Help</strong><a href="./support.html">Support</a><a href="https://github.com/savxzthc/FluxDrop/issues" target="_blank" rel="noopener noreferrer">Issues</a><a href="https://github.com/savxzthc/FluxDrop/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT license</a></div>
+        </div>
+      </div>
+      <div class="shell footer-bottom"><span>&copy; <span data-year></span> FluxDrop contributors.</span><span>No cloud. No account. No phone app.</span></div>
+    </footer>
+  </body>
+</html>
