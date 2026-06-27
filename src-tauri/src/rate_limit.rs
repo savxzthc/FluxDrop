@@ -18,7 +18,7 @@ impl RateLimiter {
         }
     }
 
-    pub fn check_invalid_attempt(&mut self, ip: IpAddr) -> bool {
+    pub fn consume_invalid_attempt(&mut self, ip: IpAddr) -> bool {
         let now = Instant::now();
         let attempts = self.attempts.entry(ip).or_default();
         attempts.retain(|attempt| now.duration_since(*attempt) <= self.window);

@@ -58,4 +58,5 @@ tower = { version = "0.5", features = ["util"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Threading"] }
 winreg = "0.56.0"

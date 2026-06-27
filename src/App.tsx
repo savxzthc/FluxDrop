@@ -1,5 +1,4 @@
-import { listen } from "@tauri-apps/api/event";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AppIcon } from "./components/AppIcon";
 import { ApprovalPrompt } from "./components/ApprovalPrompt";
 import { DropZone } from "./components/DropZone";
@@ -14,6 +13,10 @@ import { SecurityCard } from "./components/SecurityCard";
 import { SettingsCard } from "./components/SettingsCard";
 import { StatusCard } from "./components/StatusCard";
 import { ThemeToggle } from "./components/ThemeToggle";
+import { useTauriTransferEvents } from "./hooks/useTauriTransferEvents";
+import { useThemePreference } from "./hooks/useThemePreference";
+import { useTransferPolling } from "./hooks/useTransferPolling";
+import { useTransferSpeed } from "./hooks/useTransferSpeed";
 import {
   approveDownload,
   approveUpload,
@@ -41,7 +44,6 @@ import {
   updateSettings
 } from "./lib/api";
 
-type SpeedSample = { time: number; bytes: number };
 type AppView = "send" | "receive" | "history" | "settings";
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -63,7 +65,6 @@ const VIEW_COPY: Record<AppView, { eyebrow: string; title: string }> = {
 };
 
 export default function App() {
-  const storedTheme = window.localStorage.getItem("fluxdrop-theme");
   const [view, setView] = useState<AppView>("send");
   const [share, setShare] = useState<ShareInfo | null>(null);
   const [status, setStatus] = useState<ShareStatusInfo | null>(null);
@@ -79,37 +80,14 @@ export default function App() {
   const [isPreparing, setIsPreparing] = useState(false);
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [now, setNow] = useState(Date.now());
-  const [systemDark, setSystemDark] = useState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);
-  const [themePreference, setThemePreference] = useState<AppSettings["theme"]>(
-    storedTheme === "dark" || storedTheme === "light" || storedTheme === "system" ? storedTheme : "system"
-  );
-  const samples = useRef<SpeedSample[]>([]);
   const lastShellShare = useRef<{ key: string; at: number } | null>(null);
-  const resolvedTheme =
-    themePreference === "dark" || themePreference === "light"
-      ? themePreference
-      : systemDark
-        ? "dark"
-        : "light";
+  const { resolvedTheme, setThemePreference, themePreference } = useThemePreference();
+  const { resetSpeedSamples, speedBytesPerSecond } = useTransferSpeed(status?.bytes_sent, now);
   const activeAddress =
     addresses.find((address) => address.ip === settings.preferred_lan_ip) ??
     addresses.find((address) => address.preferred) ??
     addresses[0];
   const currentCopy = VIEW_COPY[view];
-
-  useEffect(() => {
-    const query = window.matchMedia("(prefers-color-scheme: dark)");
-    const updateSystemTheme = (event: MediaQueryListEvent) => setSystemDark(event.matches);
-    setSystemDark(query.matches);
-    query.addEventListener("change", updateSystemTheme);
-    return () => query.removeEventListener("change", updateSystemTheme);
-  }, []);
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = resolvedTheme;
-    document.documentElement.style.colorScheme = resolvedTheme;
-    window.localStorage.setItem("fluxdrop-theme", themePreference);
-  }, [resolvedTheme, themePreference]);
 
   useEffect(() => {
     getNetworkAddresses().then(setAddresses).catch(() => setAddresses([]));
@@ -127,110 +105,25 @@ export default function App() {
       .catch(() => undefined);
   }, []);
 
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setNow(Date.now());
-      if (share) getShareStatus().then(setStatus).catch(() => undefined);
-      if (receive) getReceiveStatus().then(setReceiveStatus).catch(() => undefined);
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [share, receive]);
+  useTransferPolling({
+    onReceiveStatus: setReceiveStatus,
+    onShareStatus: setStatus,
+    onTick: setNow,
+    receive,
+    share
+  });
 
-  useEffect(() => {
-    const unlisteners: Array<() => void> = [];
-    const subscribe = async () => {
-      for (const eventName of [
-        "phone_connected",
-        "approval_requested",
-        "download_approved",
-        "download_denied",
-        "download_timed_out",
-        "download_started",
-        "progress_updated",
-        "download_completed",
-        "download_interrupted",
-        "share_expired",
-        "share_cancelled"
-      ]) {
-        const unlisten = await listen<ShareStatusInfo>(eventName, (event) => {
-          setStatus(event.payload);
-          if (
-            [
-              "download_denied",
-              "download_timed_out",
-              "download_completed",
-              "share_expired",
-              "share_cancelled",
-              "download_interrupted"
-            ].includes(eventName)
-          ) {
-            void refreshHistory();
-          }
-        });
-        unlisteners.push(unlisten);
-      }
-      for (const eventName of [
-        "upload_phone_connected",
-        "upload_approval_requested",
-        "upload_approved",
-        "upload_denied",
-        "upload_timed_out",
-        "upload_started",
-        "upload_progress",
-        "upload_completed",
-        "upload_interrupted",
-        "receive_expired",
-        "receive_cancelled"
-      ]) {
-        const unlisten = await listen<ReceiveStatusInfo>(eventName, (event) => {
-          setReceiveStatus(event.payload);
-          if (
-            [
-              "upload_denied",
-              "upload_timed_out",
-              "upload_completed",
-              "upload_interrupted",
-              "receive_expired",
-              "receive_cancelled"
-            ].includes(eventName)
-          ) {
-            void refreshHistory();
-          }
-        });
-        unlisteners.push(unlisten);
-      }
-      const dropUnlisten = await listen<string[] | { paths?: string[] }>("tauri://drag-drop", (event) => {
-        if (view !== "send" || share || receive) return;
-        const payload = event.payload;
-        const paths = Array.isArray(payload) ? payload : payload.paths ?? [];
-        if (paths.length > 0) void beginShare(paths);
-      });
-      unlisteners.push(dropUnlisten);
-      const shellShareUnlisten = await listen<string[]>("shell_share", (event) => {
-        const paths = Array.isArray(event.payload) ? event.payload : [];
-        if (paths.length > 0) handleShellPaths(paths);
-      });
-      unlisteners.push(shellShareUnlisten);
-      const shellFocusUnlisten = await listen("shell_focus", () => setView("send"));
-      unlisteners.push(shellFocusUnlisten);
-    };
-    void subscribe().catch(() => undefined);
-    return () => unlisteners.forEach((unlisten) => unlisten());
-  }, [view, share, receive]);
-
-  useEffect(() => {
-    if (!status) return;
-    samples.current.push({ time: Date.now(), bytes: status.bytes_sent });
-    samples.current = samples.current.filter((sample) => Date.now() - sample.time <= 3500);
-  }, [status?.bytes_sent]);
-
-  const speedBytesPerSecond = useMemo(() => {
-    if (samples.current.length < 2) return 0;
-    const first = samples.current[0];
-    const last = samples.current[samples.current.length - 1];
-    const elapsed = (last.time - first.time) / 1000;
-    return elapsed > 0 ? Math.max(0, (last.bytes - first.bytes) / elapsed) : 0;
-  }, [status?.bytes_sent, now]);
+  useTauriTransferEvents({
+    onBeginShare: (paths) => void beginShare(paths),
+    onFocusSend: () => setView("send"),
+    onReceiveStatus: setReceiveStatus,
+    onRefreshHistory: () => void refreshHistory(),
+    onShareStatus: setStatus,
+    onShellPaths: handleShellPaths,
+    receiveActive: Boolean(receive),
+    shareActive: Boolean(share),
+    view
+  });
 
   function handleShellPaths(paths: string[]) {
     if (!paths || paths.length === 0) return;
@@ -248,7 +141,7 @@ export default function App() {
     setError(null);
     setIsPreparing(true);
     setStatus(null);
-    samples.current = [];
+    resetSpeedSamples();
     try {
       const created = await createShare(filePaths);
       setReceive(null);
@@ -289,7 +182,7 @@ export default function App() {
     await cancelShare();
     setShare(null);
     setStatus(null);
-    samples.current = [];
+    resetSpeedSamples();
     await refreshHistory();
   }
 
