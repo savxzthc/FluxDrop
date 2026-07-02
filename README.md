@@ -153,3 +153,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+Would you like to support the development?
+btc: bc1qa2fz2hvsfjne7vwvzh8ajdqk8thww6mldpmgsr
+eth: 0x0C918f18278342B5480ae97D2C5e1AE5299dd920
+ltc: Ld8qcrrunMNrhHvv9nHKjG694x2DBfAf1z
