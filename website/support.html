@@ -10,7 +10,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="Install FluxDrop, connect your phone, and troubleshoot local network, certificate, and Windows Firewall issues."
+      content="Install FluxDrop v0.3.0, connect your phone, configure transfer options, use Receive mode, and troubleshoot local network, certificate, and Windows Firewall issues."
     />
     <meta name="theme-color" content="#0d1118" />
     <title>Support - FluxDrop</title>
@@ -31,7 +31,7 @@
         </nav>
         <div class="header-actions">
           <a class="text-link desktop-only" href="https://github.com/savxzthc/FluxDrop" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">&nearr;</span></a>
-          <a class="button button-small" href="https://github.com/savxzthc/FluxDrop/releases" target="_blank" rel="noopener noreferrer">Download</a>
+          <a class="button button-small" href="https://github.com/savxzthc/FluxDrop/releases/tag/v0.3.0" target="_blank" rel="noopener noreferrer">Download</a>
           <button class="menu-button" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="mobile-menu" data-menu-toggle><span></span><span></span></button>
         </div>
       </div>
@@ -48,9 +48,10 @@
             <h1>Get from install to first transfer without guesswork.</h1>
             <p>
               FluxDrop needs a Windows PC, a phone, and one private Wi-Fi network.
-              Start here for installation, certificate onboarding, and connection fixes.
+              Start here for installation, per-transfer options, Receive mode, certificate onboarding,
+              and connection fixes.
             </p>
-            <a class="button button-primary" href="https://github.com/savxzthc/FluxDrop/releases" target="_blank" rel="noopener noreferrer">Download FluxDrop</a>
+            <a class="button button-primary" href="https://github.com/savxzthc/FluxDrop/releases/tag/v0.3.0" target="_blank" rel="noopener noreferrer">Download FluxDrop v0.3.0</a>
           </div>
           <div class="requirements-card" data-reveal>
             <span>Requirements</span>
@@ -69,6 +70,9 @@
           <aside class="support-nav" data-reveal>
             <strong>On this page</strong>
             <a href="#first-transfer">First transfer</a>
+            <a href="#receive-upload">Receive uploads</a>
+            <a href="#link-options">Link options</a>
+            <a href="#history-privacy">History privacy</a>
             <a href="#certificate">Certificate prompt</a>
             <a href="#connection">Connection problems</a>
             <a href="#firewall">Windows Firewall</a>
@@ -79,11 +83,52 @@
               <span class="section-label">First transfer</span>
               <h2>Send a file to your phone.</h2>
               <ol class="instruction-list">
-                <li><span>1</span><div><strong>Open FluxDrop</strong><p>Stay in the Send workspace and choose a file, several files, or a folder.</p></div></li>
-                <li><span>2</span><div><strong>Scan the QR code</strong><p>Use your phone camera while both devices are connected to the same Wi-Fi network.</p></div></li>
-                <li><span>3</span><div><strong>Complete certificate onboarding</strong><p>If prompted, use the browser's Advanced or Proceed action to open the secure local page.</p></div></li>
-                <li><span>4</span><div><strong>Approve on the PC</strong><p>Check the phone IP and file details, then approve the request in FluxDrop.</p></div></li>
-                <li><span>5</span><div><strong>Download on the phone</strong><p>Tap the download action. FluxDrop shows progress and the final outcome on the desktop.</p></div></li>
+                <li><span>1</span><div><strong>Check readiness</strong><p>Confirm FluxDrop sees a private LAN adapter and that the link options match this transfer.</p></div></li>
+                <li><span>2</span><div><strong>Choose what to send</strong><p>Stay in the Send workspace and choose one file, several files, or a folder.</p></div></li>
+                <li><span>3</span><div><strong>Scan the QR code</strong><p>Use your phone camera while both devices are connected to the same Wi-Fi network.</p></div></li>
+                <li><span>4</span><div><strong>Complete certificate onboarding</strong><p>If prompted, use the browser's Advanced or Proceed action to open the secure local page.</p></div></li>
+                <li><span>5</span><div><strong>Approve on the PC</strong><p>Check the phone IP and file details, then approve the request in FluxDrop.</p></div></li>
+                <li><span>6</span><div><strong>Download on the phone</strong><p>Tap the download action. FluxDrop shows progress, timeline state, and the final outcome on the desktop.</p></div></li>
+              </ol>
+            </section>
+
+            <section id="receive-upload" data-reveal>
+              <span class="section-label">Receive uploads</span>
+              <h2>Move a file from your phone to your PC.</h2>
+              <ol class="instruction-list">
+                <li><span>1</span><div><strong>Open Receive</strong><p>Choose the destination folder where incoming files should be saved.</p></div></li>
+                <li><span>2</span><div><strong>Wait for the folder check</strong><p>FluxDrop verifies write access before it shows the upload QR code.</p></div></li>
+                <li><span>3</span><div><strong>Scan and select a file</strong><p>The phone page previews the file name and size before it asks the PC for approval.</p></div></li>
+                <li><span>4</span><div><strong>Approve the upload</strong><p>Review the phone IP, file name, file size, and configured upload limit before accepting.</p></div></li>
+                <li><span>5</span><div><strong>Let it finish</strong><p>FluxDrop writes to a temporary partial file, verifies the size, then publishes the final file without overwriting an existing name.</p></div></li>
+              </ol>
+            </section>
+
+            <section id="link-options" data-reveal>
+              <span class="section-label">Link options</span>
+              <h2>Adjust the next transfer without changing every default.</h2>
+              <div class="check-grid">
+                <article><span>01</span><h3>Expiration</h3><p>Pick 5, 10, 30, or 60 minutes. QR cards now show a live expiry meter.</p></article>
+                <article><span>02</span><h3>Approval</h3><p>Keep PC approval on for normal use. If you turn it off for a trusted moment, the start screen calls that out.</p></article>
+                <article><span>03</span><h3>Single-use downloads</h3><p>Send links can expire after the first completed download, or stay reusable until the selected expiration.</p></article>
+                <article><span>04</span><h3>Receive upload limits</h3><p>Receive links can allow up to 16 GB, with warnings above the 2 GB secure default.</p></article>
+              </div>
+            </section>
+
+            <section id="history-privacy" data-reveal>
+              <span class="section-label">History privacy</span>
+              <h2>Keep useful records without keeping paths forever.</h2>
+              <div class="callout">
+                <strong>History never stores transfer tokens, URLs, certificates, or file contents.</strong>
+                <p>
+                  v0.3.0 adds private history mode and a scrub action for saved local source or destination
+                  paths. Metadata can stay available even after repeat shortcuts are disabled.
+                </p>
+              </div>
+              <ol class="plain-steps">
+                <li>Open <strong>Settings</strong> to turn off remembered transfer locations for future records.</li>
+                <li>Use <strong>Forget saved locations</strong> to remove paths from existing history metadata.</li>
+                <li>Open <strong>History</strong> to search, filter, repeat available setups, or copy a privacy-safe CSV.</li>
               </ol>
             </section>
 
@@ -151,7 +196,7 @@
         <div><a class="brand footer-brand" href="./"><span class="brand-mark" aria-hidden="true"><i></i><i></i></span><span>FluxDrop</span></a><p>Local file transfer between your Windows PC and phone.</p></div>
         <div class="footer-links">
           <div><strong>Product</strong><a href="./#how-it-works">How it works</a><a href="./#features">Features</a><a href="./security.html">Security</a></div>
-          <div><strong>Project</strong><a href="https://github.com/savxzthc/FluxDrop" target="_blank" rel="noopener noreferrer">GitHub</a><a href="https://github.com/savxzthc/FluxDrop/releases" target="_blank" rel="noopener noreferrer">Releases</a><a href="https://github.com/savxzthc/FluxDrop/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a></div>
+          <div><strong>Project</strong><a href="https://github.com/savxzthc/FluxDrop" target="_blank" rel="noopener noreferrer">GitHub</a><a href="https://github.com/savxzthc/FluxDrop/releases/tag/v0.3.0" target="_blank" rel="noopener noreferrer">v0.3.0 release</a><a href="https://github.com/savxzthc/FluxDrop/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a></div>
           <div><strong>Help</strong><a href="./support.html">Support</a><a href="https://github.com/savxzthc/FluxDrop/issues" target="_blank" rel="noopener noreferrer">Issues</a><a href="https://github.com/savxzthc/FluxDrop/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT license</a></div>
         </div>
       </div>

@@ -10,7 +10,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="Read FluxDrop's local transfer security model, protections, limitations, and vulnerability reporting process."
+      content="Read FluxDrop's local transfer security model, v0.3.0 hardening changes, protections, limitations, and vulnerability reporting process."
     />
     <meta name="theme-color" content="#0d1118" />
     <title>Security - FluxDrop</title>
@@ -34,7 +34,7 @@
         </nav>
         <div class="header-actions">
           <a class="text-link desktop-only" href="https://github.com/savxzthc/FluxDrop" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">&nearr;</span></a>
-          <a class="button button-small" href="https://github.com/savxzthc/FluxDrop/releases" target="_blank" rel="noopener noreferrer">Download</a>
+          <a class="button button-small" href="https://github.com/savxzthc/FluxDrop/releases/tag/v0.3.0" target="_blank" rel="noopener noreferrer">Download</a>
           <button class="menu-button" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="mobile-menu" data-menu-toggle><span></span><span></span></button>
         </div>
       </div>
@@ -55,8 +55,9 @@
             <h1>Security claims you can verify, with limits you can see.</h1>
             <p>
               FluxDrop reduces exposure with direct local transfer, HTTPS, strong random links,
-              short expirations, and explicit PC approval. It also states clearly what self-signed
-              local TLS cannot protect against.
+              short expirations, explicit PC approval, and v0.3.0 hardening around upload scope,
+              token validation, local storage, and client-IP-bound approvals. It also states clearly
+              what self-signed local TLS cannot protect against.
             </p>
           </div>
           <div class="security-seal" data-reveal aria-hidden="true">
@@ -93,6 +94,53 @@
               <span>04</span>
               <h3>Keep a human in the loop</h3>
               <p>PC approval is required by default before a phone can download or upload a file.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section release-security-section">
+        <div class="shell">
+          <div class="section-heading split-heading" data-reveal>
+            <div>
+              <span class="section-label">v0.3.0 hardening</span>
+              <h2>The newest release closes off avoidable edge cases.</h2>
+            </div>
+            <p>
+              These changes keep the local-only model intact while tightening token handling,
+              browser policy, upload behavior, and history/storage boundaries.
+            </p>
+          </div>
+          <div class="principles-grid security-update-grid">
+            <article data-reveal>
+              <span>01</span>
+              <h3>Approval follows the requesting phone</h3>
+              <p>Downloads and uploads approved on the PC are bound to the phone IP that requested them.</p>
+            </article>
+            <article data-reveal>
+              <span>02</span>
+              <h3>Upload body limits stay scoped</h3>
+              <p>Unlimited streaming applies only to the file upload route; JSON metadata keeps Axum's default cap.</p>
+            </article>
+            <article data-reveal>
+              <span>03</span>
+              <h3>Token probes are stricter</h3>
+              <p>Routes require FluxDrop's exact 27-character URL-safe token shape and malformed upload status checks count toward rate limits.</p>
+            </article>
+            <article data-reveal>
+              <span>04</span>
+              <h3>Rendered pages are tighter</h3>
+              <p>QR images render through data URIs, transfer pages use a stricter CSP, and desktop WebView policy blocks object, base, and frame injection.</p>
+            </article>
+            <article data-reveal>
+              <span>05</span>
+              <h3>Filenames and archives are safer</h3>
+              <p>Incoming names and generated archive paths sanitize Windows device names and overlong filename components.</p>
+            </article>
+            <article data-reveal>
+              <span>06</span>
+              <h3>Local records fail safer</h3>
+              <p>Settings and history saves replace files atomically, and CSV export neutralizes spreadsheet formula prefixes in user-controlled fields.</p>
             </article>
           </div>
         </div>
@@ -153,6 +201,11 @@
               <span class="coverage reduced">Reduced</span>
             </div>
             <div class="threat-row">
+              <strong>Oversized upload metadata</strong>
+              <p>Metadata endpoints keep request body caps; large files stream only after the approved upload path is used.</p>
+              <span class="coverage covered">Protected</span>
+            </div>
+            <div class="threat-row">
               <strong>Local history exposure</strong>
               <p>Private history mode and scrub controls remove saved repeat paths while preserving metadata.</p>
               <span class="coverage reduced">Reduced</span>
@@ -182,6 +235,7 @@
             <li>Avoid guest Wi-Fi and public hotspots where client isolation or hostile peers may be present.</li>
             <li>Confirm the requesting phone IP and file details before approving.</li>
             <li>Cancel active links when you no longer need them.</li>
+            <li>Use private history mode when repeat shortcuts are less important than avoiding saved local paths.</li>
             <li>Do not bypass a certificate warning if the local IP is not the one shown in FluxDrop.</li>
           </ul>
         </div>
@@ -213,7 +267,7 @@
         </div>
         <div class="footer-links">
           <div><strong>Product</strong><a href="./#how-it-works">How it works</a><a href="./#features">Features</a><a href="./security.html">Security</a></div>
-          <div><strong>Project</strong><a href="https://github.com/savxzthc/FluxDrop" target="_blank" rel="noopener noreferrer">GitHub</a><a href="https://github.com/savxzthc/FluxDrop/releases" target="_blank" rel="noopener noreferrer">Releases</a><a href="https://github.com/savxzthc/FluxDrop/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a></div>
+          <div><strong>Project</strong><a href="https://github.com/savxzthc/FluxDrop" target="_blank" rel="noopener noreferrer">GitHub</a><a href="https://github.com/savxzthc/FluxDrop/releases/tag/v0.3.0" target="_blank" rel="noopener noreferrer">v0.3.0 release</a><a href="https://github.com/savxzthc/FluxDrop/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a></div>
           <div><strong>Help</strong><a href="./support.html">Support</a><a href="https://github.com/savxzthc/FluxDrop/issues" target="_blank" rel="noopener noreferrer">Issues</a><a href="https://github.com/savxzthc/FluxDrop/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT license</a></div>
         </div>
       </div>

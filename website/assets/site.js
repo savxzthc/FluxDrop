@@ -103,7 +103,7 @@ if (!reducedMotion) {
   }
 
   const interactiveCards = document.querySelectorAll(
-    ".step-card, .feature-card, .principles-grid article, .check-grid article, .instruction-list li"
+    ".step-card, .feature-card, .release-card, .principles-grid article, .check-grid article, .instruction-list li"
   );
 
   interactiveCards.forEach((card) => {

@@ -776,6 +776,81 @@ p {
   background: var(--surface-soft);
 }
 
+.release-section {
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.release-layout {
+  display: grid;
+  grid-template-columns: 0.72fr 1.28fr;
+  align-items: start;
+  gap: 58px;
+}
+
+.release-copy {
+  position: sticky;
+  top: 112px;
+}
+
+.release-copy h2 {
+  margin-bottom: 24px;
+  font-size: clamp(38px, 4.8vw, 62px);
+  line-height: 1.05;
+  letter-spacing: -0.055em;
+}
+
+.release-copy p {
+  margin-bottom: 28px;
+  color: var(--ink-soft);
+  font-size: 17px;
+  line-height: 1.8;
+}
+
+.release-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+
+.release-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.release-card {
+  min-height: 245px;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+
+.release-card > span {
+  display: block;
+  margin-bottom: 58px;
+  color: var(--violet);
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+}
+
+.release-card h3 {
+  margin-bottom: 11px;
+  font-size: 20px;
+  line-height: 1.25;
+  letter-spacing: -0.035em;
+}
+
+.release-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.75;
+}
+
 .two-column {
   display: grid;
   grid-template-columns: 1.1fr 0.9fr;
@@ -904,6 +979,7 @@ p {
 
 .step-card h3,
 .feature-card h3,
+.release-card h3,
 .principles-grid h3,
 .check-grid h3 {
   margin-bottom: 11px;
@@ -914,6 +990,7 @@ p {
 
 .step-card p,
 .feature-card p,
+.release-card p,
 .principles-grid p,
 .check-grid p {
   margin: 0;
@@ -1538,6 +1615,10 @@ p {
   gap: 12px;
 }
 
+.security-update-grid {
+  grid-template-columns: repeat(3, 1fr);
+}
+
 .principles-grid article {
   min-height: 280px;
   padding: 30px;
@@ -2073,6 +2154,7 @@ p {
   }
 
   .two-column,
+  .release-layout,
   .split-heading,
   .security-grid,
   .open-source-card,
@@ -2087,6 +2169,10 @@ p {
 
   .problem-copy {
     padding-top: 0;
+  }
+
+  .release-copy {
+    position: static;
   }
 
   .steps-grid {
@@ -2131,6 +2217,10 @@ p {
   }
 
   .principles-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .security-update-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 
@@ -2280,11 +2370,14 @@ p {
   }
 
   .steps-grid,
-  .feature-grid {
+  .feature-grid,
+  .release-grid,
+  .security-update-grid {
     grid-template-columns: 1fr;
   }
 
   .feature-card,
+  .release-card,
   .feature-large,
   .feature-wide {
     grid-column: auto;
@@ -2989,6 +3082,21 @@ main,
     rgba(12, 17, 25, 0.84);
 }
 
+.release-section {
+  border-color: var(--line);
+  background:
+    radial-gradient(circle at 86% 16%, rgba(98, 91, 232, 0.065), transparent 28%),
+    rgba(8, 11, 18, 0.7);
+}
+
+.release-copy h2 {
+  color: var(--ink);
+}
+
+.release-copy p {
+  color: var(--muted);
+}
+
 .two-column h2,
 .section-heading h2,
 .open-source-card h2,
@@ -3003,6 +3111,7 @@ main,
 .split-heading p,
 .step-card p,
 .feature-card p,
+.release-card p,
 .principles-grid p,
 .check-grid p,
 .open-source-card p,
@@ -3013,6 +3122,7 @@ main,
 
 .step-card,
 .feature-card,
+.release-card,
 .principles-grid article,
 .check-grid article,
 .instruction-list li {
@@ -3039,6 +3149,7 @@ main,
 
 .step-card:hover,
 .feature-card:hover,
+.release-card:hover,
 .principles-grid article:hover,
 .check-grid article:hover,
 .instruction-list li:hover {
