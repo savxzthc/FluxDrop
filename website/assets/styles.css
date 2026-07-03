@@ -460,6 +460,22 @@ p {
   font-style: normal;
 }
 
+.accent-text,
+h1 em,
+h2 em,
+h3 em,
+strong em {
+  color: var(--violet);
+  font-style: normal;
+}
+
+.security-preview h2 em,
+.security-list strong em,
+.final-cta h2 em {
+  color: #aaa6ff;
+  text-shadow: 0 0 24px rgba(129, 124, 247, 0.2);
+}
+
 .hero-summary {
   max-width: 620px;
   margin-bottom: 34px;
