@@ -259,6 +259,14 @@ mod tests {
     }
 
     #[test]
+    fn sanitizes_windows_reserved_archive_components() {
+        assert_eq!(
+            safe_archive_path(Path::new("reports/CON.txt")).expect("safe"),
+            "reports/_CON.txt"
+        );
+    }
+
+    #[test]
     fn prepares_folder_with_relative_structure() {
         let directory = tempfile::tempdir().expect("tempdir");
         let root = directory.path().join("photos");

@@ -13,6 +13,7 @@ use std::path::PathBuf;
 use uuid::Uuid;
 
 pub const TOKEN_BYTES: usize = 20;
+pub const TOKEN_CHARS: usize = 27;
 pub const TOKEN_TTL_MINUTES: i64 = 10;
 pub const APPROVAL_TIMEOUT_SECONDS: i64 = 60;
 
@@ -80,7 +81,6 @@ pub struct ShareSession {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShareInfo {
     pub id: Uuid,
-    pub token: String,
     pub file_name: String,
     pub file_size: u64,
     pub file_size_human: String,
@@ -89,10 +89,12 @@ pub struct ShareInfo {
     pub is_archive: bool,
     pub download_url: String,
     pub qr_svg: String,
+    pub created_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
     pub local_ip: String,
     pub port: u16,
     pub status: ShareStatus,
+    pub approval_required: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -407,7 +409,7 @@ mod tests {
     #[test]
     fn test_generate_token_length_and_charset() {
         let token = generate_token();
-        assert!(token.len() >= 27);
+        assert_eq!(token.len(), TOKEN_CHARS);
         assert!(token
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));

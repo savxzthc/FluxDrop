@@ -2,7 +2,7 @@
 
 **Send files from your PC to your phone with one QR scan. No app, no account, no cloud.**
 
-[![CI](https://github.com/savxzthc/FluxDrop/actions/workflows/ci.yml/badge.svg)](https://github.com/savxzthc/FluxDrop/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](CHANGELOG.md)
+[![CI](https://github.com/savxzthc/FluxDrop/actions/workflows/ci.yml/badge.svg)](https://github.com/savxzthc/FluxDrop/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](CHANGELOG.md)
 
 <!-- Add a GIF or screenshot here showing the QR flow -->
 
@@ -18,7 +18,7 @@ AirDrop is excellent but Apple-centered, Bluetooth is slow for larger files, Goo
 
 - Single-file PC-to-phone sharing
 - Multi-file and folder sharing as an on-the-fly ZIP with bounded memory use
-- Phone-to-PC Receive mode with a PC-chosen destination folder
+- Phone-to-PC Receive mode with a PC-chosen destination folder and phone-side upload size preflight
 - Local HTTPS server bound to a detected or user-selected LAN address
 - Per-LAN-IP self-signed certificate generated and stored locally
 - Cryptographically random one-time token with 160 bits of entropy
@@ -28,10 +28,12 @@ AirDrop is excellent but Apple-centered, Bluetooth is slow for larger files, Goo
 - Self-contained mobile download page with no external assets
 - Real-time desktop transfer status and progress
 - Explicit PC approval before a phone can start downloading
+- Approval-bound download and upload requests that reject reuse from a different LAN client
 - Manual cancellation from the desktop app
 - Close-to-tray operation that keeps active transfers running
 - Persisted System, Light, and Dark appearance modes with automatic Windows theme following
 - Native-style Send, Receive, and Settings workspaces with responsive desktop navigation
+- Start-screen readiness checks, per-transfer link options, repeatable recent transfers, private history mode, approval countdowns, diagnostics copy, filtered transfer history analytics, and privacy-safe CSV export
 - Persisted transfer history with outcomes, device IP, clear-history controls, and repeat actions
 - Filename sanitization, HTML escaping, security headers, and invalid-token rate limiting
 
@@ -49,9 +51,11 @@ Transfer pages, metadata, uploads, and downloads use HTTPS with a certificate ge
 
 Because the certificate is self-signed, the phone shows a browser warning the first time it connects. The QR code opens a generic HTTP instruction page, with the secure URL held only in the browser fragment so the token is not sent in that HTTP request. After the user confirms the browser warning, token-bearing requests and file data are encrypted. This protects against passive Wi-Fi sniffing, but a self-signed certificate does not authenticate the PC and cannot prevent an active man-in-the-middle attack on a hostile network.
 
-Download links use URL-safe random tokens generated from 20 random bytes. They expire after the configured 5/10/30/60-minute window and are single-use by default.
+Download links use 27-character URL-safe random tokens generated from 20 random bytes. They expire after the configured 5/10/30/60-minute window and are single-use by default.
 
-Transfer history is stored locally in the app configuration directory. It contains display metadata, the phone IP when available, and the original local source or destination paths needed for repeat actions. It never stores transfer tokens, URLs, certificates, or file contents, and it can be cleared from the History workspace.
+When PC approval is required, FluxDrop binds the approval to the phone IP that requested it. A different LAN client that learns the same token receives a forbidden response and must scan a fresh QR code.
+
+Transfer history is stored locally in the app configuration directory. It contains display metadata, the phone IP when available, and, when repeat actions are enabled, the original local source or destination paths needed to restart transfers. Private history mode keeps future history metadata without those local paths, which disables repeat shortcuts for those records. Settings also includes a scrub action that removes saved local paths from existing history while keeping metadata. History never stores transfer tokens, URLs, certificates, or file contents, and it can be cleared from the History workspace.
 
 ## Requirements
 
@@ -116,6 +120,7 @@ Windows Defender Firewall may ask whether to allow FluxDrop on private networks.
 - Avoid guest Wi-Fi networks; many isolate devices from each other.
 - Confirm Windows Firewall allows FluxDrop on private networks.
 - Open Settings and select the correct LAN adapter if a VPN or virtual adapter is chosen.
+- If FluxDrop says no LAN adapter is available, connect the PC to a private Wi-Fi or Ethernet network and refresh addresses before starting a transfer.
 
 ## Manual QA Steps
 

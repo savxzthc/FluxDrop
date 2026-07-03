@@ -51,6 +51,7 @@ fn main() {
             fluxdrop_lib::commands::update_settings,
             fluxdrop_lib::commands::get_transfer_history,
             fluxdrop_lib::commands::clear_transfer_history,
+            fluxdrop_lib::commands::forget_history_locations,
             fluxdrop_lib::commands::repeat_transfer,
             fluxdrop_lib::commands::approve_download,
             fluxdrop_lib::commands::deny_download,
@@ -87,9 +88,12 @@ fn main() {
                 }
             }
             if global_hotkey_enabled {
-                let _ = app
+                if let Err(err) = app
                     .global_shortcut()
-                    .register(shell_integration::global_shortcut());
+                    .register(shell_integration::global_shortcut())
+                {
+                    eprintln!("{err}; the global hotkey was not registered.");
+                }
             }
 
             fluxdrop_lib::tray::setup(app)?;

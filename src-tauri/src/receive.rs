@@ -30,16 +30,17 @@ pub struct ReceiveSession {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReceiveInfo {
     pub id: Uuid,
-    pub token: String,
     pub upload_url: String,
     pub qr_svg: String,
     pub destination_folder_name: String,
+    pub created_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
     pub local_ip: String,
     pub port: u16,
     pub max_upload_bytes: u64,
     pub max_upload_size_human: String,
     pub status: ShareStatus,
+    pub approval_required: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

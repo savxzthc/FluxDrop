@@ -18,7 +18,6 @@ export type ShareStatus =
 
 export interface ShareInfo {
   id: string;
-  token: string;
   file_name: string;
   file_size: number;
   file_size_human: string;
@@ -27,10 +26,12 @@ export interface ShareInfo {
   is_archive: boolean;
   download_url: string;
   qr_svg: string;
+  created_at: string;
   expires_at: string;
   local_ip: string;
   port: number;
   status: ShareStatus;
+  approval_required: boolean;
 }
 
 export interface ShareStatusInfo {
@@ -63,16 +64,17 @@ export interface NetworkAddress {
 
 export interface ReceiveInfo {
   id: string;
-  token: string;
   upload_url: string;
   qr_svg: string;
   destination_folder_name: string;
+  created_at: string;
   expires_at: string;
   local_ip: string;
   port: number;
   max_upload_bytes: number;
   max_upload_size_human: string;
   status: ShareStatus;
+  approval_required: boolean;
 }
 
 export interface ReceiveStatusInfo {
@@ -102,12 +104,19 @@ export interface AppSettings {
   theme: "system" | "light" | "dark";
   shell_integration: boolean;
   global_hotkey: boolean;
+  remember_transfer_locations: boolean;
 }
 
 export interface CreateShareOptions {
   expiration_minutes?: number;
   single_use?: boolean;
   approval_required?: boolean;
+}
+
+export interface StartReceiveOptions {
+  expiration_minutes?: number;
+  approval_required?: boolean;
+  max_upload_bytes?: number;
 }
 
 export type TransferDirection = "send" | "receive";
@@ -127,6 +136,12 @@ export interface HistoryEntry {
   client_ip: string | null;
   outcome: TransferOutcome;
   can_repeat: boolean;
+  repeat_unavailable_reason: string | null;
+}
+
+export interface ForgetHistoryLocationsResult {
+  changed_count: number;
+  entries: HistoryEntry[];
 }
 
 export type RepeatedTransfer =
@@ -165,8 +180,8 @@ export function updateSettings(newSettings: AppSettings): Promise<AppSettings> {
   return invoke("update_settings", { newSettings });
 }
 
-export function startReceive(destinationFolder: string): Promise<ReceiveInfo> {
-  return invoke("start_receive", { destinationFolder });
+export function startReceive(destinationFolder: string, options?: StartReceiveOptions): Promise<ReceiveInfo> {
+  return invoke("start_receive", { destinationFolder, options: options ?? null });
 }
 
 export function getReceiveStatus(): Promise<ReceiveStatusInfo | null> {
@@ -191,6 +206,10 @@ export function getTransferHistory(): Promise<HistoryEntry[]> {
 
 export function clearTransferHistory(): Promise<void> {
   return invoke("clear_transfer_history");
+}
+
+export function forgetHistoryLocations(): Promise<ForgetHistoryLocationsResult> {
+  return invoke("forget_history_locations");
 }
 
 export function repeatTransfer(historyId: string): Promise<RepeatedTransfer> {

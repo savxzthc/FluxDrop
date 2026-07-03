@@ -26,7 +26,7 @@ pub(super) async fn upload_page(
             }
             Html(mobile_upload_html(&snapshot)).into_response()
         }
-        Err(reason) => error_page_response(reason),
+        Err(reason) => upload_error_page_response(reason),
     }
 }
 
@@ -124,7 +124,9 @@ pub(super) async fn upload_status(
     Path(token): Path<String>,
 ) -> Response {
     if !valid_token_shape(&token) {
-        return api_error_response(InvalidReason::NotFound);
+        return api_error_response(
+            record_invalid_reason(&state, addr.ip(), InvalidReason::NotFound).await,
+        );
     }
     let mut guard = state.app_state.write().await;
     let receive = match guard.receive_session.as_ref() {
@@ -140,6 +142,13 @@ pub(super) async fn upload_status(
         Some(InvalidReason::Cancelled)
     } else if receive.is_expired() {
         Some(InvalidReason::Expired)
+    } else if approval_client_mismatch(
+        receive.approval_required,
+        receive.client_ip,
+        addr.ip(),
+        &receive.status,
+    ) {
+        Some(InvalidReason::ClientMismatch)
     } else {
         None
     };
@@ -195,8 +204,9 @@ pub(super) async fn upload_file(
         if let Some(receive) = guard.receive_session.as_mut() {
             receive.status = ShareStatus::Uploading;
             receive.bytes_received = 0;
-            let info =
-                receive.status_info(local_address, Some("Phone upload started.".to_string()));
+            let message = Some("Phone upload started.".to_string());
+            let info = receive.status_info(local_address, message.clone());
+            guard.last_request_status = message;
             events::emit_share_status(state.app.as_ref(), "upload_started", &info);
         }
     }
@@ -248,7 +258,11 @@ pub(super) async fn upload_file(
         Ok(file) => file,
         Err(_) => {
             set_upload_error(&state, "FluxDrop could not create a temporary upload file.").await;
-            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "temp_unavailable"})),
+            )
+                .into_response();
         }
     };
     let (std_file, temp_path) = named_temp.into_parts();
@@ -291,7 +305,11 @@ pub(super) async fn upload_file(
             drop(output);
             drop(temp_path);
             set_upload_error(&state, "FluxDrop could not write the incoming file.").await;
-            return StatusCode::INSUFFICIENT_STORAGE.into_response();
+            return (
+                StatusCode::INSUFFICIENT_STORAGE,
+                Json(serde_json::json!({"error": "write_failed"})),
+            )
+                .into_response();
         }
         if last_emit.elapsed() >= Duration::from_millis(150) {
             emit_upload_progress(&state, received).await;
@@ -321,7 +339,11 @@ pub(super) async fn upload_file(
             "FluxDrop could not finish writing the incoming file.",
         )
         .await;
-        return StatusCode::INSUFFICIENT_STORAGE.into_response();
+        return (
+            StatusCode::INSUFFICIENT_STORAGE,
+            Json(serde_json::json!({"error": "write_failed"})),
+        )
+            .into_response();
     }
     drop(output);
     let persist_result =
@@ -332,7 +354,11 @@ pub(super) async fn upload_file(
             "FluxDrop could not safely move the upload into the destination folder.",
         )
         .await;
-        return StatusCode::CONFLICT.into_response();
+        return (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({"error": "store_failed"})),
+        )
+            .into_response();
     }
 
     let info = mark_upload_completed(&state.app_state, &token, received).await;
@@ -366,6 +392,16 @@ async fn validate_receive_token(
             } else {
                 InvalidReason::Denied
             })
+        }
+        Some(receive)
+            if approval_client_mismatch(
+                receive.approval_required,
+                receive.client_ip,
+                client_ip,
+                &receive.status,
+            ) =>
+        {
+            Some(InvalidReason::ClientMismatch)
         }
         Some(receive) if require_approval && receive.approval_required && !receive.approved => {
             Some(InvalidReason::ApprovalRequired)
@@ -446,8 +482,9 @@ async fn emit_upload_progress(state: &HttpState, bytes_received: u64) {
         .map(|server| server.address.to_string());
     if let Some(receive) = guard.receive_session.as_mut() {
         receive.bytes_received = bytes_received;
-        let info =
-            receive.status_info(local_address, Some("Phone upload in progress.".to_string()));
+        let message = Some("Phone upload in progress.".to_string());
+        let info = receive.status_info(local_address, message.clone());
+        guard.last_request_status = message;
         events::emit_share_status(state.app.as_ref(), "upload_progress", &info);
     }
 }
@@ -501,6 +538,52 @@ async fn set_upload_error(state: &HttpState, message: &str) {
     if let Some(receive) = terminal_receive.as_ref() {
         let _ = crate::history::record_receive(&state.app_state, receive).await;
     }
+}
+
+fn upload_error_page_response(reason: InvalidReason) -> Response {
+    let (status, title, message) = match reason {
+        InvalidReason::Expired | InvalidReason::Completed => (
+            StatusCode::GONE,
+            "Receive Link Expired",
+            "This FluxDrop receive link has expired or was already used.",
+        ),
+        InvalidReason::Cancelled => (
+            StatusCode::GONE,
+            "Receive Cancelled",
+            "The PC cancelled this FluxDrop receive link.",
+        ),
+        InvalidReason::ApprovalRequired => (
+            StatusCode::FORBIDDEN,
+            "Waiting for Approval",
+            "The PC must approve this upload before it can start.",
+        ),
+        InvalidReason::ClientMismatch => (
+            StatusCode::FORBIDDEN,
+            "Different Device",
+            "This approval belongs to the phone that requested it. Scan a fresh QR code from the device you want to use.",
+        ),
+        InvalidReason::Denied => (
+            StatusCode::FORBIDDEN,
+            "Upload Denied",
+            "The PC denied this FluxDrop upload.",
+        ),
+        InvalidReason::ApprovalTimedOut => (
+            StatusCode::REQUEST_TIMEOUT,
+            "Approval Timed Out",
+            "The PC did not approve this upload within 60 seconds. Start a new receive link and try again.",
+        ),
+        InvalidReason::RateLimited => (
+            StatusCode::TOO_MANY_REQUESTS,
+            "Too Many Attempts",
+            "Too many invalid receive link attempts were received. Wait a minute and try again.",
+        ),
+        InvalidReason::NotFound => (
+            StatusCode::NOT_FOUND,
+            "Receive Link Not Found",
+            "This FluxDrop receive link is invalid or has expired.",
+        ),
+    };
+    (status, Html(error_html(title, message))).into_response()
 }
 
 async fn unique_destination_path(folder: &std::path::Path, file_name: &str) -> std::path::PathBuf {

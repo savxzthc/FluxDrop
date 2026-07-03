@@ -1,14 +1,16 @@
 import type { ReceiveInfo, ReceiveStatusInfo } from "../lib/api";
 import { formatBytes, statusCopy } from "../lib/format";
+import { TransferTimeline } from "./TransferTimeline";
 
 interface ReceiveStatusCardProps {
   receive: ReceiveInfo;
   status: ReceiveStatusInfo | null;
+  speedBytesPerSecond: number;
 }
 
-export function ReceiveStatusCard({ receive, status }: ReceiveStatusCardProps) {
+export function ReceiveStatusCard({ receive, status, speedBytesPerSecond }: ReceiveStatusCardProps) {
   const current = status?.status ?? receive.status;
-  const copy = statusCopy(current.kind, current.kind === "Error" ? current.message : undefined);
+  const copy = statusCopy(current.kind, current.kind === "Error" ? current.message : undefined, "receive");
   const total = status?.file_size ?? 0;
   const received = status?.bytes_received ?? 0;
   const percent = status?.progress_percent ?? 0;
@@ -23,6 +25,7 @@ export function ReceiveStatusCard({ receive, status }: ReceiveStatusCardProps) {
         <span className="status-pill">{copy.label}</span>
       </div>
       <p>{copy.detail}</p>
+      <TransferTimeline direction="receive" status={current} />
       {current.kind === "Uploading" || current.kind === "Completed" ? (
         <div className="progress-wrap">
           <div className="progress-bar" aria-label="Upload progress">
@@ -42,8 +45,16 @@ export function ReceiveStatusCard({ receive, status }: ReceiveStatusCardProps) {
           <dd>{status?.destination_folder_name ?? receive.destination_folder_name}</dd>
         </div>
         <div>
+          <dt>Server</dt>
+          <dd>{status?.local_address ?? `${receive.local_ip}:${receive.port}`}</dd>
+        </div>
+        <div>
           <dt>Maximum size</dt>
           <dd>{receive.max_upload_size_human}</dd>
+        </div>
+        <div>
+          <dt>Speed</dt>
+          <dd>{speedBytesPerSecond > 0 ? `${formatBytes(speedBytesPerSecond)}/s` : "Waiting"}</dd>
         </div>
         <div>
           <dt>Phone IP</dt>

@@ -13,6 +13,7 @@ use qrcode::render::svg;
 use qrcode::QrCode;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+use std::path::Path;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -21,6 +22,14 @@ pub struct CreateShareOptions {
     pub expiration_minutes: Option<u32>,
     pub single_use: Option<bool>,
     pub approval_required: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct StartReceiveOptions {
+    pub expiration_minutes: Option<u32>,
+    pub approval_required: Option<bool>,
+    pub max_upload_bytes: Option<u64>,
 }
 
 #[tauri::command]
@@ -61,6 +70,7 @@ async fn create_share_impl(
         .approval_required
         .unwrap_or(saved_settings.approval_required);
     let addresses = network::list_network_addresses();
+    ensure_lan_available(&addresses)?;
     let ip = network::configured_ip_address(&addresses, saved_settings.preferred_lan_ip.as_deref());
 
     let endpoints = ensure_server(&app_state, &app, ip).await?;
@@ -84,7 +94,6 @@ async fn create_share_impl(
 
     let info = ShareInfo {
         id: session.id,
-        token: session.token.clone(),
         file_name: session.safe_file_name.clone(),
         file_size: session.file_size,
         file_size_human: format_file_size(session.file_size),
@@ -93,10 +102,12 @@ async fn create_share_impl(
         is_archive: session.is_archive,
         download_url,
         qr_svg,
+        created_at: session.created_at,
         expires_at: session.expires_at,
         local_ip: endpoints.secure.ip().to_string(),
         port: endpoints.secure.port(),
         status: session.status.clone(),
+        approval_required: session.approval_required,
     };
 
     let (previous_share, previous_receive) = {
@@ -188,14 +199,16 @@ pub async fn get_network_addresses(
 #[tauri::command]
 pub async fn start_receive(
     destination_folder: String,
+    options: Option<StartReceiveOptions>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<ReceiveInfo, String> {
-    start_receive_impl(destination_folder, state.inner().clone(), app).await
+    start_receive_impl(destination_folder, options, state.inner().clone(), app).await
 }
 
 async fn start_receive_impl(
     destination_folder: String,
+    options: Option<StartReceiveOptions>,
     app_state: AppState,
     app: AppHandle,
 ) -> Result<ReceiveInfo, String> {
@@ -208,21 +221,41 @@ async fn start_receive_impl(
     if !metadata.is_dir() {
         return Err("Choose a folder where phone uploads should be saved.".to_string());
     }
+    let destination_for_check = destination.clone();
+    tokio::task::spawn_blocking(move || ensure_destination_writable(&destination_for_check))
+        .await
+        .map_err(|_| {
+            "FluxDrop could not verify write access to the destination folder.".to_string()
+        })??;
 
     let settings = app_state.read().await.settings.clone();
+    let options = options.unwrap_or_default();
+    let expiration_minutes = options
+        .expiration_minutes
+        .unwrap_or(settings.expiration_minutes);
+    if !ALLOWED_EXPIRATION_MINUTES.contains(&expiration_minutes) {
+        return Err("Link expiration must be 5, 10, 30, or 60 minutes.".to_string());
+    }
+    let approval_required = options
+        .approval_required
+        .unwrap_or(settings.approval_required);
+    let max_upload_bytes = options
+        .max_upload_bytes
+        .unwrap_or(settings.max_upload_bytes);
+    settings::validate_max_upload_bytes(max_upload_bytes)?;
     let addresses = network::list_network_addresses();
+    ensure_lan_available(&addresses)?;
     let ip = network::configured_ip_address(&addresses, settings.preferred_lan_ip.as_deref());
     let endpoints = ensure_server(&app_state, &app, ip).await?;
     let session = ReceiveSession::new(
         destination,
-        settings.expiration_minutes,
-        settings.approval_required,
-        settings.max_upload_bytes,
+        expiration_minutes,
+        approval_required,
+        max_upload_bytes,
     );
     let upload_url = format!("https://{}/u/{}", endpoints.secure, session.token);
     let info = ReceiveInfo {
         id: session.id,
-        token: session.token.clone(),
         upload_url: upload_url.clone(),
         qr_svg: build_qr_svg(&onboarding_url(endpoints.onboarding, &upload_url))?,
         destination_folder_name: session
@@ -231,12 +264,14 @@ async fn start_receive_impl(
             .and_then(|name| name.to_str())
             .unwrap_or("Selected folder")
             .to_string(),
+        created_at: session.created_at,
         expires_at: session.expires_at,
         local_ip: endpoints.secure.ip().to_string(),
         port: endpoints.secure.port(),
         max_upload_bytes: session.max_upload_bytes,
         max_upload_size_human: format_file_size(session.max_upload_bytes),
         status: session.status.clone(),
+        approval_required: session.approval_required,
     };
 
     let (previous_share, previous_receive) = {
@@ -298,13 +333,11 @@ pub async fn cancel_active_receive(app_state: AppState, app: AppHandle) -> Resul
             .ok_or_else(|| "There is no active receive link.".to_string())?;
         receive.cancelled = true;
         receive.status = ShareStatus::Cancelled;
-        (
-            receive.status_info(
-                local_address,
-                Some("Receive mode cancelled on the PC.".to_string()),
-            ),
-            receive.clone(),
-        )
+        let message = "Receive mode cancelled on the PC.".to_string();
+        let info = receive.status_info(local_address, Some(message.clone()));
+        let terminal_receive = receive.clone();
+        guard.last_request_status = Some(message);
+        (info, terminal_receive)
     };
     let _ = history::record_receive(&app_state, &terminal_receive).await;
     events::emit_share_status(Some(&app), "receive_cancelled", &info);
@@ -330,6 +363,35 @@ pub async fn clear_transfer_history(state: State<'_, AppState>) -> Result<(), St
     }
     guard.history.clear();
     Ok(())
+}
+
+#[derive(Debug, Serialize)]
+pub struct ForgetHistoryLocationsResult {
+    pub changed_count: usize,
+    pub entries: Vec<HistoryEntry>,
+}
+
+#[tauri::command]
+pub async fn forget_history_locations(
+    state: State<'_, AppState>,
+) -> Result<ForgetHistoryLocationsResult, String> {
+    let mut guard = state.write().await;
+    let path = guard.history_path.clone();
+    let changed_count = history::forget_repeat_locations(&mut guard.history);
+    if changed_count > 0 {
+        if let Some(path) = path.as_deref() {
+            history::save(path, &guard.history)?;
+        }
+    }
+    let entries = guard
+        .history
+        .iter()
+        .map(|record| record.public_entry())
+        .collect();
+    Ok(ForgetHistoryLocationsResult {
+        changed_count,
+        entries,
+    })
 }
 
 #[derive(Debug, Serialize)]
@@ -378,12 +440,17 @@ pub async fn repeat_transfer(
             }
             start_receive_impl(
                 destination_folder.to_string_lossy().into_owned(),
+                None,
                 app_state,
                 app,
             )
             .await
             .map(RepeatedTransfer::Receive)
         }
+        RepeatTarget::Unavailable => Err(
+            "This transfer cannot be repeated because FluxDrop did not remember its local path."
+                .to_string(),
+        ),
     }
 }
 
@@ -441,15 +508,18 @@ fn focus_main_window(app: &AppHandle) {
     }
 }
 
-fn apply_global_hotkey(app: &AppHandle, enabled: bool) {
+fn apply_global_hotkey(app: &AppHandle, enabled: bool) -> Result<(), String> {
     use tauri_plugin_global_shortcut::GlobalShortcutExt;
     let shortcut = crate::shell_integration::global_shortcut();
     let manager = app.global_shortcut();
     if enabled {
-        let _ = manager.register(shortcut);
+        manager
+            .register(shortcut)
+            .map_err(|err| format!("FluxDrop could not register the global hotkey: {err}"))?;
     } else {
         let _ = manager.unregister(shortcut);
     }
+    Ok(())
 }
 
 #[tauri::command]
@@ -486,13 +556,19 @@ pub async fn update_settings(
         )
     };
     let path = path.ok_or_else(|| "FluxDrop settings storage is not initialized.".to_string())?;
+    if old_server_ip.is_some() && addresses.is_empty() {
+        return Err(
+            "FluxDrop could not find a private LAN adapter, so the active local server was left unchanged."
+                .to_string(),
+        );
+    }
     settings::save(&path, &new_settings)?;
 
     if new_settings.shell_integration != previous_shell_integration {
         crate::shell_integration::apply_registration(new_settings.shell_integration)?;
     }
     if new_settings.global_hotkey != previous_global_hotkey {
-        apply_global_hotkey(&app, new_settings.global_hotkey);
+        apply_global_hotkey(&app, new_settings.global_hotkey)?;
     }
 
     if old_server_ip.is_some_and(|current| current != selected_ip) {
@@ -619,6 +695,28 @@ async fn ensure_server(
     Ok(endpoints)
 }
 
+fn ensure_destination_writable(destination: &Path) -> Result<(), String> {
+    tempfile::Builder::new()
+        .prefix(".fluxdrop-write-test-")
+        .tempfile_in(destination)
+        .map(|_| ())
+        .map_err(|err| {
+            format!(
+                "FluxDrop cannot write to the selected destination folder. Choose another folder or check permissions. ({err})"
+            )
+        })
+}
+
+fn ensure_lan_available(addresses: &[NetworkAddress]) -> Result<(), String> {
+    if addresses.is_empty() {
+        return Err(
+            "FluxDrop could not find a private LAN adapter. Connect this PC to Wi-Fi or Ethernet, then refresh addresses in Settings."
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
 async fn set_approval_state(
     app_state: AppState,
     app: AppHandle,
@@ -693,17 +791,15 @@ async fn set_upload_approval(
         } else {
             receive.deny(false);
         }
-        (
-            receive.status_info(
-                local_address,
-                Some(if approved {
-                    "Phone upload approved on the PC.".to_string()
-                } else {
-                    "Phone upload denied on the PC.".to_string()
-                }),
-            ),
-            (!approved).then(|| receive.clone()),
-        )
+        let message = if approved {
+            "Phone upload approved on the PC.".to_string()
+        } else {
+            "Phone upload denied on the PC.".to_string()
+        };
+        let info = receive.status_info(local_address, Some(message.clone()));
+        let terminal_receive = (!approved).then(|| receive.clone());
+        guard.last_request_status = Some(message);
+        (info, terminal_receive)
     };
     if let Some(receive) = terminal_receive.as_ref() {
         let _ = history::record_receive(&app_state, receive).await;

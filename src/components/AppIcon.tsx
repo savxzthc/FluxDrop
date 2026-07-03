@@ -11,6 +11,7 @@ interface AppIconProps {
     | "folder"
     | "phone"
     | "check"
+    | "copy"
     | "sparkles"
     | "history"
     | "repeat"
@@ -53,6 +54,12 @@ const paths: Record<AppIconProps["name"], ReactNode> = {
     </>
   ),
   check: <path d="m5 12 4 4L19 6" />,
+  copy: (
+    <>
+      <rect x="8" y="8" width="11" height="13" rx="2" />
+      <path d="M5 16H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </>
+  ),
   sparkles: <path d="m12 3 1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2L12 3Zm6 10 .7 2.3L21 16l-2.3.7L18 19l-.7-2.3L15 16l2.3-.7L18 13ZM5 14l.8 2.2L8 17l-2.2.8L5 20l-.8-2.2L2 17l2.2-.8L5 14Z" />,
   history: (
     <>

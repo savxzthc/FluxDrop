@@ -144,12 +144,17 @@
             </div>
             <div class="threat-row">
               <strong>Link guessing</strong>
-              <p>160-bit random tokens plus per-IP rate limiting.</p>
+              <p>27-character URL-safe, 160-bit random tokens plus per-IP rate limiting.</p>
               <span class="coverage covered">Protected</span>
             </div>
             <div class="threat-row">
               <strong>Someone sees the QR code</strong>
-              <p>PC approval, short expiration, and single-use links.</p>
+              <p>PC approval, client-IP binding, short expiration, and single-use links.</p>
+              <span class="coverage reduced">Reduced</span>
+            </div>
+            <div class="threat-row">
+              <strong>Local history exposure</strong>
+              <p>Private history mode and scrub controls remove saved repeat paths while preserving metadata.</p>
               <span class="coverage reduced">Reduced</span>
             </div>
             <div class="threat-row">

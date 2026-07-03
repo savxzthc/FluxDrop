@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-03
+
+### Added
+
+- Start-screen readiness checks, recent repeatable transfers, per-transfer security overrides, and active transfer timelines for Send and Receive.
+- Link expiry meters on QR cards plus cleaner copy controls and a bundled app favicon.
+- Searchable transfer history with summary stats, filtered copy summaries, privacy-safe CSV export, and repeat-unavailable reasons.
+- Private history mode, settings diagnostics copy, and a scrub action that removes saved local repeat paths from existing history.
+- LAN troubleshooting copy bundles and checklists for both send and receive flows.
+- Disabled/preparing states for start actions so users cannot accidentally queue duplicate share or receive setup attempts.
+- Receive setup now verifies destination-folder write access before showing the phone QR code.
+- Phone upload pages now preview the selected file name and size and block files above the receive limit before requesting approval.
+- Saved settings and per-transfer receive options now expose upload limits up to the backend-supported 16 GB maximum.
+- Send and Receive setup now fail clearly when no private LAN adapter is available instead of falling back to an unusable localhost QR link.
+
+### Security
+
+- Server upload streaming now keeps the unlimited body allowance scoped to `/upload/:token`; JSON metadata endpoints retain Axum's default request body cap.
+- Download metadata APIs now return precise JSON errors for expired and denied links instead of collapsing every invalid state to `404`.
+- Receive/upload phone pages now use upload-specific denied, expired, timeout, and rate-limit copy.
+- QR images now render through data URIs instead of DOM SVG injection, and the desktop WebView CSP blocks object, base, and frame injection.
+- Local transfer pages now send a stricter CSP that blocks script attributes, frames, workers, manifests, media, fonts, and non-FluxDrop form targets.
+- Upload failures now return stable JSON error codes for storage/write failures so phone-side copy can stay actionable without exposing paths.
+- Windows reserved device names and excessively long filename components are sanitized in incoming filenames and generated archive paths.
+- History CSV export neutralizes spreadsheet formula prefixes in user-controlled fields.
+- Token validation now requires FluxDrop's exact generated 27-character URL-safe token shape on server routes and certificate-onboarding links.
+- Upload status polling now counts malformed token probes toward the same per-IP invalid-attempt limit as other transfer routes.
+- PC approvals are now bound to the phone IP that requested them, so another LAN client cannot reuse an approved token from a different address.
+- Settings and history saves now replace files atomically on Windows instead of deleting the old local store before renaming the new one.
+- Desktop IPC no longer sends raw transfer tokens as separate fields; the UI only receives the link it must display or copy.
+
+### Fixed
+
+- Receive-side approve, deny, and cancel actions now persist the latest status message for subsequent UI polling.
+- Receive-side upload start and progress events now persist the same status message shown by later polling.
+- Receive status text now describes phone uploads instead of reusing download-specific completion and cancellation copy.
+- Download progress and completion polling messages now update only after the active transfer token is confirmed.
+- Start-screen action panels no longer stretch their centered content below the viewport when side panels are taller.
+- Start-screen trust copy, quick-guide steps, live headings, and QR instructions now reflect per-transfer approval overrides.
+- Settings and startup now report global hotkey registration failures instead of silently accepting a broken shortcut.
+- Per-transfer receive options now warn when upload limits exceed the 2 GB secure default even if the saved setting is also higher.
+- Settings changes no longer restart an active local server onto localhost when no private LAN adapter is detected.
+
 ## [0.2.0] - 2026-06-27
 
 ### Added

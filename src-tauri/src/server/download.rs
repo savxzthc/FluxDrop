@@ -62,14 +62,7 @@ pub(super) async fn share_api(
             is_archive: snapshot.is_archive,
         })
         .into_response(),
-        Err(_) => (
-            StatusCode::NOT_FOUND,
-            Json(ErrorBody {
-                error: "not_found",
-                message: "This link is invalid or has expired.",
-            }),
-        )
-            .into_response(),
+        Err(reason) => api_error_response(reason),
     }
 }
 
@@ -299,11 +292,7 @@ async fn validate_token(
     client_ip: IpAddr,
     require_approval: bool,
 ) -> Result<ShareSnapshot, InvalidReason> {
-    if token.len() < 22
-        || !token
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
-    {
+    if !valid_token_shape(token) {
         return record_invalid(state, client_ip, InvalidReason::NotFound).await;
     }
 
@@ -325,6 +314,16 @@ async fn validate_token(
             } else {
                 InvalidReason::Denied
             })
+        }
+        Some(share)
+            if approval_client_mismatch(
+                share.approval_required,
+                share.client_ip,
+                client_ip,
+                &share.status,
+            ) =>
+        {
+            Some(InvalidReason::ClientMismatch)
         }
         Some(share) if require_approval && share.approval_required && !share.approved => {
             Some(InvalidReason::ApprovalRequired)
@@ -423,14 +422,15 @@ async fn update_progress(
         .server
         .as_ref()
         .map(|server| server.address.to_string());
-    let last_request_status = Some(request_status.to_string());
-    guard.last_request_status = last_request_status.clone();
     let share = guard.current_share.as_mut()?;
     if share.token != token {
         return None;
     }
     share.update_progress(bytes_sent);
-    Some(share.status_info(local_address, last_request_status))
+    let last_request_status = Some(request_status.to_string());
+    let info = share.status_info(local_address, last_request_status.clone());
+    guard.last_request_status = last_request_status;
+    Some(info)
 }
 
 pub(super) async fn mark_completed(app_state: &AppState, token: &str) -> Option<ShareStatusInfo> {
@@ -440,17 +440,16 @@ pub(super) async fn mark_completed(app_state: &AppState, token: &str) -> Option<
             .server
             .as_ref()
             .map(|server| server.address.to_string());
-        let last_request_status = Some("Download completed.".to_string());
-        guard.last_request_status = last_request_status.clone();
         let share = guard.current_share.as_mut()?;
         if share.token != token {
             return None;
         }
         share.mark_download_completed();
-        (
-            share.status_info(local_address, last_request_status),
-            share.clone(),
-        )
+        let last_request_status = Some("Download completed.".to_string());
+        let info = share.status_info(local_address, last_request_status.clone());
+        let terminal_share = share.clone();
+        guard.last_request_status = last_request_status;
+        (info, terminal_share)
     };
     let _ = crate::history::record_share(app_state, &terminal_share).await;
     Some(info)

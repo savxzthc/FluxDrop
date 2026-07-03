@@ -87,6 +87,7 @@ pub(super) fn mobile_download_html(snapshot: &ShareSnapshot) -> String {
 pub(super) fn mobile_upload_html(snapshot: &ReceiveSnapshot) -> String {
     let token = escape_html(&snapshot.token);
     let max_size = escape_html(&format_file_size(snapshot.max_upload_bytes));
+    let max_upload_bytes = snapshot.max_upload_bytes;
     format!(
         r#"<!doctype html>
 <html lang="en">
@@ -107,7 +108,7 @@ pub(super) fn mobile_upload_html(snapshot: &ReceiveSnapshot) -> String {
     #status {{ padding: 12px; border-radius: 7px; background: #f8fafc; color: #334155; }}
   </style>
 </head>
-<body data-token="{token}">
+<body data-token="{token}" data-max-upload-bytes="{max_upload_bytes}">
   <main>
     <h1>Send a file to this PC</h1>
     <p>Select one file. FluxDrop sends its name and size to the PC for approval before the upload begins.</p>
@@ -173,7 +174,7 @@ pub(super) const ONBOARDING_SCRIPT: &str = r#"(() => {
     const encodedTarget = window.location.hash.slice(1);
     if (!encodedTarget) throw new Error("This setup link is incomplete. Scan the current FluxDrop QR code again.");
     const target = new URL(decodeURIComponent(encodedTarget));
-    const validPath = /^\/(?:d|u)\/[A-Za-z0-9_-]{20,}$/.test(target.pathname);
+    const validPath = /^\/(?:d|u)\/[A-Za-z0-9_-]{27}$/.test(target.pathname);
     if (target.protocol !== "https:" || target.hostname !== window.location.hostname || !target.port || !validPath) {
       throw new Error("This setup link is invalid. Scan the current FluxDrop QR code again.");
     }
@@ -192,26 +193,89 @@ pub(super) const UPLOAD_SCRIPT: &str = r#"(() => {
   const input = document.getElementById("file-input");
   const button = document.getElementById("upload-button");
   const status = document.getElementById("status");
+  const maxUploadBytes = Number(document.body.dataset.maxUploadBytes || "0");
   let active = false;
 
   const setStatus = (message) => { status.textContent = message; };
   const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+  const errorMessages = {
+    approval_required: "The PC still needs to approve this upload.",
+    approval_timed_out: "Approval timed out. Start a new receive link and try again.",
+    cancelled: "The PC cancelled this receive link.",
+    client_mismatch: "This approval belongs to a different phone. Scan a fresh QR code from this device.",
+    denied: "The PC denied this upload.",
+    expired: "This receive link has expired or was already used.",
+    invalid_multipart: "The phone could not package this file correctly. Try selecting it again.",
+    metadata_mismatch: "The selected file changed after approval. Choose it again and retry.",
+    missing_file: "No file was included in the upload.",
+    missing_filename: "Choose a file with a valid name.",
+    not_found: "This receive link is invalid or has expired.",
+    rate_limited: "Too many invalid attempts were received. Wait a minute and try again.",
+    request_in_progress: "The PC is already handling an upload request for this link.",
+    size_mismatch: "The file size changed during upload. Choose it again and retry.",
+    store_failed: "The PC could not safely store this upload. Try a different destination folder.",
+    temp_unavailable: "The PC could not create a temporary upload file.",
+    too_large: "This file is larger than the receive limit.",
+    upload_failed: "The upload did not complete.",
+    write_failed: "The PC could not write the incoming file."
+  };
+
+  function formatBytes(bytes) {
+    if (bytes === 0) return "0 B";
+    const units = ["B", "KB", "MB", "GB", "TB"];
+    let size = bytes;
+    let index = 0;
+    while (size >= 1024 && index < units.length - 1) {
+      size /= 1024;
+      index += 1;
+    }
+    return index === 0 ? `${bytes} B` : `${size.toFixed(1)} ${units[index]}`;
+  }
+
+  function selectedFileTooLarge(file) {
+    return maxUploadBytes > 0 && file.size > maxUploadBytes;
+  }
+
+  async function readApiError(response, fallback) {
+    const payload = await response.json().catch(() => null);
+    if (payload && typeof payload.message === "string" && payload.message.trim()) {
+      return payload.message;
+    }
+    const code = payload && typeof payload.error === "string" ? payload.error : "";
+    return errorMessages[code] || `${fallback} (${response.status})`;
+  }
+
+  input.addEventListener("change", () => {
+    if (active) return;
+    const file = input.files && input.files[0];
+    if (!file) {
+      button.disabled = false;
+      setStatus("Waiting for a file selection.");
+      return;
+    }
+    if (selectedFileTooLarge(file)) {
+      button.disabled = true;
+      setStatus(`This file is ${formatBytes(file.size)}, which exceeds the ${formatBytes(maxUploadBytes)} receive limit.`);
+      return;
+    }
+    button.disabled = false;
+    setStatus(`Ready to request approval for ${file.name} (${formatBytes(file.size)}).`);
+  });
 
   async function pollForApproval(file) {
     for (;;) {
       await wait(1000);
       const response = await fetch(`/api/upload-status/${encodeURIComponent(token)}`, { cache: "no-store" });
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: "request_failed" }));
-        throw new Error(error.error === "approval_timed_out" ? "Approval timed out." : "The receive link is no longer available.");
+        throw new Error(await readApiError(response, "The receive link is no longer available."));
       }
       const current = await response.json();
       if (current.status.kind === "Approved") return upload(file);
       if (current.status.kind === "Denied") {
-        throw new Error(current.approval_timed_out ? "Approval timed out." : "The PC denied this upload.");
+        throw new Error(current.approval_timed_out ? errorMessages.approval_timed_out : errorMessages.denied);
       }
       if (current.status.kind === "Cancelled" || current.status.kind === "Expired") {
-        throw new Error("The receive link is no longer available.");
+        throw new Error(errorMessages.expired);
       }
       setStatus("Waiting for approval on the PC...");
     }
@@ -223,8 +287,7 @@ pub(super) const UPLOAD_SCRIPT: &str = r#"(() => {
     body.append("file", file, file.name);
     const response = await fetch(`/upload/${encodeURIComponent(token)}`, { method: "POST", body });
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: "upload_failed" }));
-      throw new Error(`Upload failed: ${error.error || response.status}`);
+      throw new Error(await readApiError(response, "Upload failed"));
     }
     setStatus("Upload complete. The file is safely stored on the PC.");
     button.textContent = "Uploaded";
@@ -235,6 +298,10 @@ pub(super) const UPLOAD_SCRIPT: &str = r#"(() => {
     if (active) return;
     const file = input.files && input.files[0];
     if (!file) return;
+    if (selectedFileTooLarge(file)) {
+      setStatus(`This file is ${formatBytes(file.size)}, which exceeds the ${formatBytes(maxUploadBytes)} receive limit.`);
+      return;
+    }
     active = true;
     button.disabled = true;
     try {
@@ -245,8 +312,7 @@ pub(super) const UPLOAD_SCRIPT: &str = r#"(() => {
         body: JSON.stringify({ file_name: file.name, file_size: file.size, mime_type: file.type || null })
       });
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: "request_failed" }));
-        throw new Error(error.message || `Request failed: ${error.error || response.status}`);
+        throw new Error(await readApiError(response, "The PC could not accept this upload request"));
       }
       setStatus("Waiting for approval on the PC...");
       await pollForApproval(file);

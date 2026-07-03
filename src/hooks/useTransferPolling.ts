@@ -24,12 +24,16 @@ export function useTransferPolling({
   share
 }: UseTransferPollingOptions) {
   useEffect(() => {
-    const timer = window.setInterval(() => {
+    if (!share && !receive) return;
+
+    const poll = () => {
       onTick(Date.now());
       if (share) getShareStatus().then(onShareStatus).catch(() => undefined);
       if (receive) getReceiveStatus().then(onReceiveStatus).catch(() => undefined);
-    }, 1000);
+    };
 
+    poll();
+    const timer = window.setInterval(poll, 1000);
     return () => window.clearInterval(timer);
   }, [onReceiveStatus, onShareStatus, onTick, receive, share]);
 }

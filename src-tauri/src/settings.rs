@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 pub const SETTINGS_FILE_NAME: &str = "settings.json";
 pub const ALLOWED_EXPIRATION_MINUTES: [u32; 4] = [5, 10, 30, 60];
+pub const MAX_UPLOAD_BYTES: u64 = 16 * 1024 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -26,6 +27,7 @@ pub struct AppSettings {
     pub theme: ThemePreference,
     pub shell_integration: bool,
     pub global_hotkey: bool,
+    pub remember_transfer_locations: bool,
 }
 
 impl Default for AppSettings {
@@ -39,6 +41,7 @@ impl Default for AppSettings {
             theme: ThemePreference::System,
             shell_integration: false,
             global_hotkey: false,
+            remember_transfer_locations: true,
         }
     }
 }
@@ -56,14 +59,18 @@ impl AppSettings {
                 return Err("Preferred LAN adapter must use a private IPv4 address.".to_string());
             }
         }
-        if self.max_upload_bytes == 0 {
-            return Err("Maximum upload size must be greater than zero.".to_string());
-        }
-        if self.max_upload_bytes > 16 * 1024 * 1024 * 1024 {
-            return Err("Maximum upload size cannot exceed 16 GB.".to_string());
-        }
-        Ok(())
+        validate_max_upload_bytes(self.max_upload_bytes)
     }
+}
+
+pub fn validate_max_upload_bytes(max_upload_bytes: u64) -> Result<(), String> {
+    if max_upload_bytes == 0 {
+        return Err("Maximum upload size must be greater than zero.".to_string());
+    }
+    if max_upload_bytes > MAX_UPLOAD_BYTES {
+        return Err("Maximum upload size cannot exceed 16 GB.".to_string());
+    }
+    Ok(())
 }
 
 pub fn load(path: &Path) -> Result<AppSettings, String> {
@@ -90,11 +97,7 @@ pub fn save(path: &Path, settings: &AppSettings) -> Result<(), String> {
     let temporary = temporary_path(path);
     fs::write(&temporary, contents)
         .map_err(|err| format!("FluxDrop could not write settings: {err}"))?;
-    if path.exists() {
-        fs::remove_file(path)
-            .map_err(|err| format!("FluxDrop could not replace old settings: {err}"))?;
-    }
-    fs::rename(&temporary, path)
+    crate::file_utils::replace_file_atomic(&temporary, path)
         .map_err(|err| format!("FluxDrop could not finish saving settings: {err}"))
 }
 
@@ -116,6 +119,7 @@ mod tests {
         assert!(settings.approval_required);
         assert_eq!(settings.max_upload_bytes, 2 * 1024 * 1024 * 1024);
         assert_eq!(settings.theme, ThemePreference::System);
+        assert!(settings.remember_transfer_locations);
     }
 
     #[test]
@@ -125,6 +129,13 @@ mod tests {
             ..AppSettings::default()
         };
         assert!(settings.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_upload_limits() {
+        assert!(validate_max_upload_bytes(0).is_err());
+        assert!(validate_max_upload_bytes(MAX_UPLOAD_BYTES + 1).is_err());
+        assert!(validate_max_upload_bytes(MAX_UPLOAD_BYTES).is_ok());
     }
 
     #[test]
@@ -161,6 +172,11 @@ mod tests {
         assert_eq!(
             load(&path).expect("load legacy settings").theme,
             ThemePreference::System
+        );
+        assert!(
+            load(&path)
+                .expect("load legacy settings")
+                .remember_transfer_locations
         );
     }
 }

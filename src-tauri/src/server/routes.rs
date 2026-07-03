@@ -17,10 +17,12 @@ pub fn build_router(app_state: AppState, app: Option<EventHandle>) -> Router {
         .route("/upload.js", get(upload::upload_script))
         .route("/api/upload-request/:token", post(upload::upload_request))
         .route("/api/upload-status/:token", get(upload::upload_status))
-        .route("/upload/:token", post(upload::upload_file))
+        .route(
+            "/upload/:token",
+            post(upload::upload_file).layer(DefaultBodyLimit::disable()),
+        )
         .route("/health", get(health))
         .with_state(HttpState { app_state, app })
-        .layer(DefaultBodyLimit::disable())
         .layer(middleware::from_fn(security::add_security_headers))
 }
 

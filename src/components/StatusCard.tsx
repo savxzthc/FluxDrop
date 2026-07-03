@@ -1,5 +1,6 @@
 import type { ShareInfo, ShareStatusInfo } from "../lib/api";
 import { formatBytes, formatDuration, statusCopy } from "../lib/format";
+import { TransferTimeline } from "./TransferTimeline";
 
 interface StatusCardProps {
   share: ShareInfo;
@@ -9,7 +10,7 @@ interface StatusCardProps {
 
 export function StatusCard({ share, status, speedBytesPerSecond }: StatusCardProps) {
   const current = status?.status ?? share.status;
-  const copy = statusCopy(current.kind, current.kind === "Error" ? current.message : undefined);
+  const copy = statusCopy(current.kind, current.kind === "Error" ? current.message : undefined, "send");
   const bytesSent = status?.bytes_sent ?? 0;
   const total = status?.file_size ?? share.file_size;
   const percent = status?.progress_percent ?? 0;
@@ -27,6 +28,7 @@ export function StatusCard({ share, status, speedBytesPerSecond }: StatusCardPro
         <span className="status-pill">{copy.label}</span>
       </div>
       <p>{copy.detail}</p>
+      <TransferTimeline direction="send" status={current} />
       {current.kind === "Downloading" || current.kind === "Completed" ? (
         <div className="progress-wrap">
           <div className="progress-bar" aria-label="Download progress">

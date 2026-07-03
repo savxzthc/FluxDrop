@@ -13,6 +13,13 @@ import { SecurityCard } from "./components/SecurityCard";
 import { SettingsCard } from "./components/SettingsCard";
 import { StatusCard } from "./components/StatusCard";
 import { ThemeToggle } from "./components/ThemeToggle";
+import {
+  receiveOptionsFromDraft,
+  shareOptionsFromDraft,
+  TransferOptionsCard,
+  transferOptionsFromSettings,
+  TransferOptionsDraft
+} from "./components/TransferOptionsCard";
 import { useTauriTransferEvents } from "./hooks/useTauriTransferEvents";
 import { useThemePreference } from "./hooks/useThemePreference";
 import { useTransferPolling } from "./hooks/useTransferPolling";
@@ -25,8 +32,10 @@ import {
   cancelShare,
   clearTransferHistory,
   createShare,
+  CreateShareOptions,
   denyDownload,
   denyUpload,
+  forgetHistoryLocations,
   getNetworkAddresses,
   getReceiveStatus,
   getSettings,
@@ -39,10 +48,12 @@ import {
   repeatTransfer,
   ShareInfo,
   ShareStatusInfo,
+  StartReceiveOptions,
   startReceive,
   takePendingShellShare,
   updateSettings
 } from "./lib/api";
+import { formatBytes } from "./lib/format";
 
 type AppView = "send" | "receive" | "history" | "settings";
 
@@ -54,7 +65,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   max_upload_bytes: 2 * 1024 * 1024 * 1024,
   theme: "system",
   shell_integration: false,
-  global_hotkey: false
+  global_hotkey: false,
+  remember_transfer_locations: true
 };
 
 const VIEW_COPY: Record<AppView, { eyebrow: string; title: string }> = {
@@ -78,11 +90,16 @@ export default function App() {
   const [dragActive, setDragActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPreparing, setIsPreparing] = useState(false);
+  const [addressesLoaded, setAddressesLoaded] = useState(false);
+  const [addressesRefreshing, setAddressesRefreshing] = useState(false);
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [now, setNow] = useState(Date.now());
   const lastShellShare = useRef<{ key: string; at: number } | null>(null);
   const { resolvedTheme, setThemePreference, themePreference } = useThemePreference();
-  const { resetSpeedSamples, speedBytesPerSecond } = useTransferSpeed(status?.bytes_sent, now);
+  const { resetSpeedSamples: resetSendSpeedSamples, speedBytesPerSecond: sendSpeedBytesPerSecond } =
+    useTransferSpeed(status?.bytes_sent, now);
+  const { resetSpeedSamples: resetReceiveSpeedSamples, speedBytesPerSecond: receiveSpeedBytesPerSecond } =
+    useTransferSpeed(receiveStatus?.bytes_received, now);
   const activeAddress =
     addresses.find((address) => address.ip === settings.preferred_lan_ip) ??
     addresses.find((address) => address.preferred) ??
@@ -90,7 +107,10 @@ export default function App() {
   const currentCopy = VIEW_COPY[view];
 
   useEffect(() => {
-    getNetworkAddresses().then(setAddresses).catch(() => setAddresses([]));
+    getNetworkAddresses()
+      .then(setAddresses)
+      .catch(() => setAddresses([]))
+      .finally(() => setAddressesLoaded(true));
     getSettings()
       .then((loaded) => {
         setSettings(loaded);
@@ -137,15 +157,16 @@ export default function App() {
     void beginShare(paths);
   }
 
-  async function beginShare(filePaths: string[]) {
+  async function beginShare(filePaths: string[], options?: CreateShareOptions) {
     setError(null);
     setIsPreparing(true);
     setStatus(null);
-    resetSpeedSamples();
+    resetSendSpeedSamples();
     try {
-      const created = await createShare(filePaths);
+      const created = await createShare(filePaths, options);
       setReceive(null);
       setReceiveStatus(null);
+      resetReceiveSpeedSamples();
       setShare(created);
       setView("send");
       setAddresses(await getNetworkAddresses());
@@ -160,14 +181,16 @@ export default function App() {
     setHistory(await getTransferHistory());
   }
 
-  async function beginReceive(destinationFolder: string) {
+  async function beginReceive(destinationFolder: string, options?: StartReceiveOptions) {
     setError(null);
     setIsPreparing(true);
     setReceiveStatus(null);
+    resetReceiveSpeedSamples();
     try {
-      const created = await startReceive(destinationFolder);
+      const created = await startReceive(destinationFolder, options);
       setShare(null);
       setStatus(null);
+      resetSendSpeedSamples();
       setReceive(created);
       setView("receive");
       setAddresses(await getNetworkAddresses());
@@ -182,7 +205,7 @@ export default function App() {
     await cancelShare();
     setShare(null);
     setStatus(null);
-    resetSpeedSamples();
+    resetSendSpeedSamples();
     await refreshHistory();
   }
 
@@ -190,6 +213,7 @@ export default function App() {
     await cancelReceive();
     setReceive(null);
     setReceiveStatus(null);
+    resetReceiveSpeedSamples();
     await refreshHistory();
   }
 
@@ -202,12 +226,16 @@ export default function App() {
         setReceive(null);
         setReceiveStatus(null);
         setStatus(null);
+        resetReceiveSpeedSamples();
+        resetSendSpeedSamples();
         setShare(repeated.transfer);
         setView("send");
       } else {
         setShare(null);
         setStatus(null);
         setReceiveStatus(null);
+        resetSendSpeedSamples();
+        resetReceiveSpeedSamples();
         setReceive(repeated.transfer);
         setView("receive");
       }
@@ -233,10 +261,29 @@ export default function App() {
     }
   }
 
+  async function forgetSavedHistoryLocations() {
+    const result = await forgetHistoryLocations();
+    setHistory(result.entries);
+    return result.changed_count;
+  }
+
   async function saveSettings(next: AppSettings) {
     const saved = await updateSettings(next);
     setSettings(saved);
     setThemePreference(saved.theme);
+  }
+
+  async function refreshAddresses() {
+    setAddressesRefreshing(true);
+    setError(null);
+    try {
+      setAddresses(await getNetworkAddresses());
+      setAddressesLoaded(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAddressesRefreshing(false);
+    }
   }
 
   async function toggleTheme() {
@@ -370,7 +417,12 @@ export default function App() {
           ) : null}
 
           {view === "settings" ? (
-            <SettingsWorkspace settings={settings} addresses={addresses} onSave={saveSettings} />
+            <SettingsWorkspace
+              settings={settings}
+              addresses={addresses}
+              onForgetHistoryLocations={forgetSavedHistoryLocations}
+              onSave={saveSettings}
+            />
           ) : null}
 
           {view === "history" ? (
@@ -388,9 +440,18 @@ export default function App() {
               direction="send"
               preparing={isPreparing}
               dropActive={dragActive}
+              activeAddress={activeAddress}
+              addresses={addresses}
+              addressesLoaded={addressesLoaded}
+              addressesRefreshing={addressesRefreshing}
+              history={history}
+              historyBusyId={historyBusyId}
+              settings={settings}
               onDropActive={setDragActive}
               onPaths={beginShare}
               onError={setError}
+              onRefreshAddresses={refreshAddresses}
+              onRepeat={repeatHistoryEntry}
             />
           ) : null}
 
@@ -398,8 +459,17 @@ export default function App() {
             <StartWorkspace
               direction="receive"
               preparing={isPreparing}
+              activeAddress={activeAddress}
+              addresses={addresses}
+              addressesLoaded={addressesLoaded}
+              addressesRefreshing={addressesRefreshing}
+              history={history}
+              historyBusyId={historyBusyId}
+              settings={settings}
               onStartReceive={beginReceive}
               onError={setError}
+              onRefreshAddresses={refreshAddresses}
+              onRepeat={repeatHistoryEntry}
             />
           ) : null}
 
@@ -408,7 +478,7 @@ export default function App() {
               share={share}
               status={status}
               addresses={addresses}
-              speedBytesPerSecond={speedBytesPerSecond}
+              speedBytesPerSecond={sendSpeedBytesPerSecond}
               approvalBusy={approvalBusy}
               onDecision={decideDownload}
               onCancel={cancelCurrentShare}
@@ -419,6 +489,8 @@ export default function App() {
             <ReceiveWorkspace
               receive={receive}
               status={receiveStatus}
+              addresses={addresses}
+              speedBytesPerSecond={receiveSpeedBytesPerSecond}
               approvalBusy={approvalBusy}
               onDecision={decideUpload}
               onCancel={cancelCurrentReceive}
@@ -433,23 +505,57 @@ export default function App() {
 interface StartWorkspaceProps {
   direction: "send" | "receive";
   preparing: boolean;
+  activeAddress?: NetworkAddress;
+  addresses: NetworkAddress[];
+  addressesLoaded: boolean;
+  addressesRefreshing: boolean;
   dropActive?: boolean;
+  history: HistoryEntry[];
+  historyBusyId: string | null;
+  settings: AppSettings;
   onDropActive?: (active: boolean) => void;
-  onPaths?: (paths: string[]) => void;
-  onStartReceive?: (folder: string) => void;
+  onPaths?: (paths: string[], options?: CreateShareOptions) => void;
+  onStartReceive?: (folder: string, options?: StartReceiveOptions) => void;
   onError: (message: string) => void;
+  onRefreshAddresses: () => Promise<void>;
+  onRepeat: (entry: HistoryEntry) => Promise<void>;
 }
 
 function StartWorkspace({
   direction,
   preparing,
+  activeAddress,
+  addresses,
+  addressesLoaded,
+  addressesRefreshing,
   dropActive = false,
+  history,
+  historyBusyId,
+  settings,
   onDropActive,
   onPaths,
   onStartReceive,
-  onError
+  onError,
+  onRefreshAddresses,
+  onRepeat
 }: StartWorkspaceProps) {
   const sending = direction === "send";
+  const checkingNetwork = !addressesLoaded || addressesRefreshing;
+  const startDisabled = preparing || checkingNetwork || !activeAddress;
+  const disabledTitle = checkingNetwork ? "Checking LAN" : !activeAddress ? "No LAN adapter" : undefined;
+  const disabledCopy = checkingNetwork
+    ? "FluxDrop is looking for a private network address."
+    : !activeAddress
+      ? "Connect to Wi-Fi or Ethernet, then refresh addresses."
+      : undefined;
+  const [transferOptions, setTransferOptions] = useState<TransferOptionsDraft>(() =>
+    transferOptionsFromSettings(settings)
+  );
+
+  useEffect(() => {
+    setTransferOptions(transferOptionsFromSettings(settings));
+  }, [settings]);
+
   return (
     <>
       <section className="workspace-heading">
@@ -466,7 +572,9 @@ function StartWorkspace({
           <AppIcon name="shield" />
           <div>
             <strong>Protected transfer</strong>
-            <span>HTTPS, expiring token, PC approval</span>
+            <span>
+              HTTPS, expiring token, {transferOptions.approval_required ? "PC approval" : "approval off"}
+            </span>
           </div>
         </div>
       </section>
@@ -475,16 +583,50 @@ function StartWorkspace({
         {sending && onDropActive && onPaths ? (
           <DropZone
             active={dropActive}
+            disabled={startDisabled}
+            disabledCopy={disabledCopy}
+            disabledTitle={disabledTitle}
             error={null}
             onActiveChange={onDropActive}
-            onPaths={onPaths}
+            onPaths={(paths) => onPaths(paths, shareOptionsFromDraft(transferOptions))}
             onError={onError}
           />
         ) : null}
         {!sending && onStartReceive ? (
-          <ReceiveSetupCard error={null} onStart={onStartReceive} onError={onError} />
+          <ReceiveSetupCard
+            disabled={startDisabled}
+            disabledCopy={disabledCopy}
+            disabledTitle={disabledTitle}
+            error={null}
+            onStart={(folder) => onStartReceive(folder, receiveOptionsFromDraft(transferOptions))}
+            onError={onError}
+          />
         ) : null}
-        <QuickGuide direction={direction} />
+        <div className="start-side-stack">
+          <TransferOptionsCard
+            direction={direction}
+            settings={settings}
+            value={transferOptions}
+            onChange={setTransferOptions}
+          />
+          <ReadinessPanel
+            activeAddress={activeAddress}
+            addresses={addresses}
+            addressesLoaded={addressesLoaded}
+            direction={direction}
+            refreshing={addressesRefreshing}
+            settings={settings}
+            transferOptions={transferOptions}
+            onRefresh={() => void onRefreshAddresses()}
+          />
+          <QuickGuide direction={direction} approvalRequired={transferOptions.approval_required} />
+          <RecentTransfersPanel
+            direction={direction}
+            entries={history}
+            busyId={historyBusyId}
+            onRepeat={(entry) => void onRepeat(entry)}
+          />
+        </div>
       </div>
       {preparing ? (
         <div className="preparing-card">
@@ -499,18 +641,207 @@ function StartWorkspace({
   );
 }
 
-function QuickGuide({ direction }: { direction: "send" | "receive" }) {
+interface ReadinessPanelProps {
+  activeAddress?: NetworkAddress;
+  addresses: NetworkAddress[];
+  addressesLoaded: boolean;
+  direction: "send" | "receive";
+  refreshing: boolean;
+  settings: AppSettings;
+  transferOptions: TransferOptionsDraft;
+  onRefresh: () => void;
+}
+
+function ReadinessPanel({
+  activeAddress,
+  addresses,
+  addressesLoaded,
+  direction,
+  refreshing,
+  settings,
+  transferOptions,
+  onRefresh
+}: ReadinessPanelProps) {
+  return (
+    <aside className="panel readiness-panel">
+      <div className="readiness-header">
+        <div>
+          <span className="eyebrow">Ready check</span>
+          <h2>Transfer conditions</h2>
+        </div>
+        <button className="subtle-button compact-button" type="button" onClick={onRefresh} disabled={refreshing}>
+          {refreshing ? "Checking..." : "Refresh"}
+        </button>
+      </div>
+      <div className="readiness-list">
+        <ReadinessRow
+          ready={addressesLoaded && Boolean(activeAddress)}
+          label="LAN adapter"
+          value={
+            !addressesLoaded
+              ? "Checking network adapters"
+              : activeAddress
+                ? `${activeAddress.ip} on ${activeAddress.interface_name}`
+                : "No private adapter found"
+          }
+        />
+        <ReadinessRow
+          ready={transferOptions.approval_required}
+          label="PC approval"
+          value={transferOptions.approval_required ? "Required for this link" : "Disabled for this link"}
+          warning={!transferOptions.approval_required}
+        />
+        <ReadinessRow
+          ready
+          label="Link lifetime"
+          value={`${transferOptions.expiration_minutes} minute${transferOptions.expiration_minutes === 1 ? "" : "s"}`}
+        />
+        {direction === "receive" ? (
+          <ReadinessRow
+            ready={transferOptions.max_upload_bytes <= 2 * 1024 * 1024 * 1024}
+            label="Upload limit"
+            value={formatBytes(transferOptions.max_upload_bytes)}
+            warning={transferOptions.max_upload_bytes > 2 * 1024 * 1024 * 1024}
+          />
+        ) : null}
+        <ReadinessRow
+          ready={addressesLoaded && addresses.length > 0}
+          label="Detected addresses"
+          value={
+            !addressesLoaded
+              ? "Checking"
+              : addresses.length > 0
+                ? `${addresses.length} candidate${addresses.length === 1 ? "" : "s"}`
+                : "None"
+          }
+        />
+        <ReadinessRow
+          ready={settings.shell_integration || settings.global_hotkey}
+          label="Fast access"
+          value={
+            settings.shell_integration && settings.global_hotkey
+              ? "Explorer and app focus enabled"
+              : settings.shell_integration
+                ? "Explorer send enabled"
+                : settings.global_hotkey
+                  ? "App focus enabled"
+                  : "Optional shortcuts off"
+          }
+          warning={!settings.shell_integration && !settings.global_hotkey}
+        />
+        <ReadinessRow
+          ready={settings.remember_transfer_locations}
+          label="Repeat history"
+          value={settings.remember_transfer_locations ? "Local paths remembered" : "Private metadata only"}
+          warning={!settings.remember_transfer_locations}
+        />
+      </div>
+    </aside>
+  );
+}
+
+interface ReadinessRowProps {
+  ready: boolean;
+  label: string;
+  value: string;
+  warning?: boolean;
+}
+
+function ReadinessRow({ ready, label, value, warning = false }: ReadinessRowProps) {
+  return (
+    <div className="readiness-row">
+      <span className={`readiness-dot ${ready ? "ready" : warning ? "warning" : ""}`} />
+      <div>
+        <strong>{label}</strong>
+        <span>{value}</span>
+      </div>
+    </div>
+  );
+}
+
+interface RecentTransfersPanelProps {
+  direction: "send" | "receive";
+  entries: HistoryEntry[];
+  busyId: string | null;
+  onRepeat: (entry: HistoryEntry) => void;
+}
+
+function RecentTransfersPanel({ direction, entries, busyId, onRepeat }: RecentTransfersPanelProps) {
+  const recent = entries.filter((entry) => entry.direction === direction && entry.can_repeat).slice(0, 3);
+  return (
+    <aside className="panel recent-panel">
+      <div className="panel-title-with-icon">
+        <span className="feature-icon compact">
+          <AppIcon name="history" size={18} />
+        </span>
+        <div>
+          <span className="eyebrow">Repeat fast</span>
+          <h2>Recent {direction === "send" ? "sends" : "receives"}</h2>
+        </div>
+      </div>
+      {recent.length === 0 ? (
+        <p className="recent-empty">
+          {direction === "send"
+            ? "Repeatable sent files appear here after your first transfer."
+            : "Repeatable receive destinations appear here after your first upload."}
+        </p>
+      ) : (
+        <div className="recent-list">
+          {recent.map((entry) => (
+            <button
+              className="recent-transfer"
+              key={entry.id}
+              type="button"
+              disabled={busyId !== null}
+              onClick={() => onRepeat(entry)}
+            >
+              <span>
+                <strong>{entry.file_name}</strong>
+                <small>
+                  {formatCompactHistoryDate(entry.finished_at)}
+                  {entry.file_size_human ? ` | ${entry.file_size_human}` : ""}
+                </small>
+              </span>
+              <AppIcon name="repeat" size={16} />
+            </button>
+          ))}
+        </div>
+      )}
+    </aside>
+  );
+}
+
+function formatCompactHistoryDate(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(new Date(value));
+}
+
+function QuickGuide({
+  approvalRequired,
+  direction
+}: {
+  approvalRequired: boolean;
+  direction: "send" | "receive";
+}) {
   const sending = direction === "send";
   const steps = sending
     ? [
         ["Choose", "Select files, a folder, or drag them into FluxDrop."],
         ["Scan", "Open the QR code with your phone camera."],
-        ["Approve", "Confirm the phone on this PC and transfer."]
+        approvalRequired
+          ? ["Approve", "Confirm the phone on this PC and transfer."]
+          : ["Transfer", "The phone can download while the link is active."]
       ]
     : [
         ["Choose", "Pick the PC folder where uploads should arrive."],
         ["Scan", "Open the private upload page on your phone."],
-        ["Approve", "Review the exact filename and size before writing."]
+        approvalRequired
+          ? ["Approve", "Review the exact filename and size before writing."]
+          : ["Upload", "The phone can upload after choosing a file within the size limit."]
       ];
 
   return (
@@ -570,6 +901,7 @@ function SendWorkspace({
           clientIp={status.client_ip}
           fileName={status.file_name || share.file_name}
           fileSizeHuman={status.file_size_human || share.file_size_human}
+          approvalDeadline={status.approval_deadline}
           busy={approvalBusy}
           onApprove={() => void onDecision(true)}
           onDeny={() => void onDecision(false)}
@@ -579,7 +911,11 @@ function SendWorkspace({
         <div>
           <span className="eyebrow">Share is live</span>
           <h1>Ready for your phone.</h1>
-          <p>Scan the code, approve the request here, and FluxDrop handles the rest.</p>
+          <p>
+            {share.approval_required
+              ? "Scan the code, approve the request here, and FluxDrop handles the rest."
+              : "Scan the code and the phone can download while this link is active."}
+          </p>
         </div>
         <span className="live-badge">
           <i />
@@ -592,7 +928,7 @@ function SendWorkspace({
           <StatusCard share={share} status={status} speedBytesPerSecond={speedBytesPerSecond} />
           <div className="transfer-secondary-grid">
             <SecurityCard direction="send" expiresAt={status?.expires_at ?? share.expires_at} onCancel={() => void onCancel()} />
-            <HelpCard addresses={addresses} status={status} />
+            <HelpCard addresses={addresses} serverAddress={`${share.local_ip}:${share.port}`} status={status} />
           </div>
         </div>
         <QrCard share={share} />
@@ -604,12 +940,22 @@ function SendWorkspace({
 interface ReceiveWorkspaceProps {
   receive: ReceiveInfo;
   status: ReceiveStatusInfo | null;
+  addresses: NetworkAddress[];
+  speedBytesPerSecond: number;
   approvalBusy: boolean;
   onDecision: (approved: boolean) => Promise<void>;
   onCancel: () => Promise<void>;
 }
 
-function ReceiveWorkspace({ receive, status, approvalBusy, onDecision, onCancel }: ReceiveWorkspaceProps) {
+function ReceiveWorkspace({
+  receive,
+  status,
+  addresses,
+  speedBytesPerSecond,
+  approvalBusy,
+  onDecision,
+  onCancel
+}: ReceiveWorkspaceProps) {
   return (
     <>
       {status?.status.kind === "AwaitingApproval" ? (
@@ -618,6 +964,7 @@ function ReceiveWorkspace({ receive, status, approvalBusy, onDecision, onCancel 
           clientIp={status.client_ip}
           fileName={status.file_name ?? "Unknown file"}
           fileSizeHuman={status.file_size_human ?? "Unknown size"}
+          approvalDeadline={status.approval_deadline}
           busy={approvalBusy}
           onApprove={() => void onDecision(true)}
           onDeny={() => void onDecision(false)}
@@ -627,7 +974,11 @@ function ReceiveWorkspace({ receive, status, approvalBusy, onDecision, onCancel 
         <div>
           <span className="eyebrow">Receive link is live</span>
           <h1>Waiting for your phone.</h1>
-          <p>The file is written only after you approve its exact name and size.</p>
+          <p>
+            {receive.approval_required
+              ? "The file is written only after you approve its exact name and size."
+              : "The phone can upload one file within the configured size limit."}
+          </p>
         </div>
         <span className="live-badge">
           <i />
@@ -636,12 +987,15 @@ function ReceiveWorkspace({ receive, status, approvalBusy, onDecision, onCancel 
       </section>
       <div className="transfer-layout">
         <div className="transfer-stack">
-          <ReceiveStatusCard receive={receive} status={status} />
-          <SecurityCard
-            direction="receive"
-            expiresAt={status?.expires_at ?? receive.expires_at}
-            onCancel={() => void onCancel()}
-          />
+          <ReceiveStatusCard receive={receive} status={status} speedBytesPerSecond={speedBytesPerSecond} />
+          <div className="transfer-secondary-grid">
+            <SecurityCard
+              direction="receive"
+              expiresAt={status?.expires_at ?? receive.expires_at}
+              onCancel={() => void onCancel()}
+            />
+            <HelpCard addresses={addresses} serverAddress={`${receive.local_ip}:${receive.port}`} status={status} />
+          </div>
         </div>
         <ReceiveQrCard receive={receive} />
       </div>
@@ -652,10 +1006,11 @@ function ReceiveWorkspace({ receive, status, approvalBusy, onDecision, onCancel 
 interface SettingsWorkspaceProps {
   settings: AppSettings;
   addresses: NetworkAddress[];
+  onForgetHistoryLocations: () => Promise<number>;
   onSave: (settings: AppSettings) => Promise<void>;
 }
 
-function SettingsWorkspace({ settings, addresses, onSave }: SettingsWorkspaceProps) {
+function SettingsWorkspace({ settings, addresses, onForgetHistoryLocations, onSave }: SettingsWorkspaceProps) {
   return (
     <>
       <section className="workspace-heading compact-heading">
@@ -665,7 +1020,12 @@ function SettingsWorkspace({ settings, addresses, onSave }: SettingsWorkspacePro
           <p>Control security defaults, appearance, link behavior, and which LAN adapter FluxDrop uses.</p>
         </div>
       </section>
-      <SettingsCard settings={settings} addresses={addresses} onSave={onSave} />
+      <SettingsCard
+        settings={settings}
+        addresses={addresses}
+        onForgetHistoryLocations={onForgetHistoryLocations}
+        onSave={onSave}
+      />
     </>
   );
 }

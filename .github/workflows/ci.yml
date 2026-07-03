@@ -21,8 +21,8 @@ jobs:
             src-tauri/target
           key: cargo-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock') }}
       - run: cargo fmt --check
-      - run: cargo clippy -- -D warnings
-      - run: cargo test
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test --all-targets
 
   frontend-check:
     runs-on: ubuntu-latest
