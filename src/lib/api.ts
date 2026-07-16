@@ -62,6 +62,25 @@ export interface NetworkAddress {
   reason: string;
 }
 
+export type FirewallState =
+  | "healthy"
+  | "missing_rule"
+  | "stale_executable_path"
+  | "wrong_profile"
+  | "public_network"
+  | "unavailable_service"
+  | "unsupported";
+
+export interface FirewallDiagnostic {
+  state: FirewallState;
+  message: string;
+  rule_name: string;
+  executable_path: string | null;
+  configured_path: string | null;
+  current_profiles: string[];
+  repair_available: boolean;
+}
+
 export interface ReceiveInfo {
   id: string;
   upload_url: string;
@@ -78,6 +97,10 @@ export interface ReceiveInfo {
 }
 
 export interface ReceiveStatusInfo {
+  files: Array<{ file_name: string; mime_type: string | null; size: number }>;
+  file_count: number;
+  total_size: number | null;
+  total_size_human: string | null;
   file_name: string | null;
   file_size: number | null;
   file_size_human: string | null;
@@ -105,6 +128,18 @@ export interface AppSettings {
   shell_integration: boolean;
   global_hotkey: boolean;
   remember_transfer_locations: boolean;
+  automatic_updates: boolean;
+}
+
+export interface UpdateInfo {
+  available: boolean;
+  version: string | null;
+  current_version: string;
+  body: string | null;
+  date: string | null;
+  portable: boolean;
+  downloaded: boolean;
+  download_page: string;
 }
 
 export interface CreateShareOptions {
@@ -164,6 +199,14 @@ export function getNetworkAddresses(): Promise<NetworkAddress[]> {
   return invoke("get_network_addresses");
 }
 
+export function diagnoseFirewall(): Promise<FirewallDiagnostic> {
+  return invoke("diagnose_firewall");
+}
+
+export function repairFirewall(): Promise<void> {
+  return invoke("repair_firewall");
+}
+
 export function approveDownload(): Promise<void> {
   return invoke("approve_download");
 }
@@ -218,4 +261,16 @@ export function repeatTransfer(historyId: string): Promise<RepeatedTransfer> {
 
 export function takePendingShellShare(): Promise<string[] | null> {
   return invoke("take_pending_shell_share");
+}
+
+export function checkForUpdate(): Promise<UpdateInfo> {
+  return invoke("check_for_update");
+}
+
+export function installUpdate(): Promise<void> {
+  return invoke("install_update");
+}
+
+export function openUpdateDownloadPage(): Promise<void> {
+  return invoke("open_update_download_page");
 }

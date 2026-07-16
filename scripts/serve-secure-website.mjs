@@ -7,6 +7,7 @@ const host = "127.0.0.1";
 const port = Number.parseInt(process.env.PORT ?? "8766", 10);
 const root = resolve("site-dist");
 const headersFile = resolve(root, "_headers");
+const notFoundFile = resolve(root, "404.html");
 
 const mimeTypes = new Map([
   [".css", "text/css; charset=utf-8"],
@@ -47,6 +48,33 @@ function sendText(response, status, body) {
   response.end(body);
 }
 
+function isForbiddenPublicPath(relativePath) {
+  if (relativePath === "_headers" || relativePath === ".htaccess") return true;
+  return relativePath
+    .replaceAll("\\", "/")
+    .split("/")
+    .some((segment) => segment.startsWith(".") && segment !== ".well-known");
+}
+
+async function sendNotFound(request, response) {
+  try {
+    const fileStat = await stat(notFoundFile);
+    response.writeHead(404, {
+      ...securityHeaders,
+      "Cache-Control": "no-store",
+      "Content-Length": fileStat.size,
+      "Content-Type": "text/html; charset=utf-8"
+    });
+    if (request.method === "HEAD") {
+      response.end();
+      return;
+    }
+    createReadStream(notFoundFile).pipe(response);
+  } catch {
+    sendText(response, 404, "Not found");
+  }
+}
+
 const server = createServer(async (request, response) => {
   try {
     if (request.method !== "GET" && request.method !== "HEAD") {
@@ -60,18 +88,14 @@ const server = createServer(async (request, response) => {
     const relativePath = decodedPath === "/" ? "index.html" : decodedPath.slice(1);
     const filePath = resolve(root, relativePath);
 
-    if (
-      filePath !== root &&
-      !filePath.startsWith(`${root}${sep}`) ||
-      relativePath === "_headers"
-    ) {
-      sendText(response, 404, "Not found");
+    if ((filePath !== root && !filePath.startsWith(`${root}${sep}`)) || isForbiddenPublicPath(relativePath)) {
+      await sendNotFound(request, response);
       return;
     }
 
     const fileStat = await stat(filePath);
     if (!fileStat.isFile()) {
-      sendText(response, 404, "Not found");
+      await sendNotFound(request, response);
       return;
     }
 
@@ -90,7 +114,7 @@ const server = createServer(async (request, response) => {
     createReadStream(filePath).pipe(response);
   } catch (error) {
     if (error?.code === "ENOENT" || error instanceof URIError) {
-      sendText(response, 404, "Not found");
+      await sendNotFound(request, response);
       return;
     }
     console.error(error);

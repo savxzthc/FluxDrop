@@ -30,11 +30,14 @@ import {
   AppSettings,
   cancelReceive,
   cancelShare,
+  checkForUpdate,
   clearTransferHistory,
   createShare,
   CreateShareOptions,
   denyDownload,
   denyUpload,
+  diagnoseFirewall,
+  FirewallDiagnostic,
   forgetHistoryLocations,
   getNetworkAddresses,
   getReceiveStatus,
@@ -42,16 +45,20 @@ import {
   getShareStatus,
   getTransferHistory,
   HistoryEntry,
+  installUpdate,
   NetworkAddress,
+  openUpdateDownloadPage,
   ReceiveInfo,
   ReceiveStatusInfo,
   repeatTransfer,
+  repairFirewall,
   ShareInfo,
   ShareStatusInfo,
   StartReceiveOptions,
   startReceive,
   takePendingShellShare,
-  updateSettings
+  updateSettings,
+  UpdateInfo
 } from "./lib/api";
 import { formatBytes } from "./lib/format";
 
@@ -66,7 +73,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   theme: "system",
   shell_integration: false,
   global_hotkey: false,
-  remember_transfer_locations: true
+  remember_transfer_locations: true,
+  automatic_updates: true
 };
 
 const VIEW_COPY: Record<AppView, { eyebrow: string; title: string }> = {
@@ -92,6 +100,11 @@ export default function App() {
   const [isPreparing, setIsPreparing] = useState(false);
   const [addressesLoaded, setAddressesLoaded] = useState(false);
   const [addressesRefreshing, setAddressesRefreshing] = useState(false);
+  const [firewall, setFirewall] = useState<FirewallDiagnostic | null>(null);
+  const [firewallRepairing, setFirewallRepairing] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [now, setNow] = useState(Date.now());
   const lastShellShare = useRef<{ key: string; at: number } | null>(null);
@@ -118,11 +131,17 @@ export default function App() {
       })
       .catch(() => undefined);
     getTransferHistory().then(setHistory).catch(() => setHistory([]));
+    diagnoseFirewall().then(setFirewall).catch(() => setFirewall(null));
     takePendingShellShare()
       .then((paths) => {
         if (paths && paths.length > 0) handleShellPaths(paths);
       })
       .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void checkUpdates(false), 2500);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useTransferPolling({
@@ -277,12 +296,61 @@ export default function App() {
     setAddressesRefreshing(true);
     setError(null);
     try {
-      setAddresses(await getNetworkAddresses());
+      const [nextAddresses, nextFirewall] = await Promise.all([getNetworkAddresses(), diagnoseFirewall()]);
+      setAddresses(nextAddresses);
+      setFirewall(nextFirewall);
       setAddressesLoaded(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setAddressesRefreshing(false);
+    }
+  }
+
+  async function runFirewallRepair() {
+    setFirewallRepairing(true);
+    setError(null);
+    try {
+      await repairFirewall();
+      window.setTimeout(() => {
+        diagnoseFirewall().then(setFirewall).catch(() => undefined).finally(() => setFirewallRepairing(false));
+      }, 4000);
+    } catch (err) {
+      setFirewallRepairing(false);
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function checkUpdates(manual = true) {
+    setUpdateBusy(true);
+    if (manual) setUpdateMessage(null);
+    try {
+      const info = await checkForUpdate();
+      setUpdateInfo(info);
+      if (manual && !info.available) setUpdateMessage(`FluxDrop ${info.current_version} is current.`);
+    } catch (err) {
+      if (manual) setUpdateMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setUpdateBusy(false);
+    }
+  }
+
+  async function applyUpdate() {
+    if (!updateInfo?.available) return;
+    if (updateInfo.portable) {
+      await openUpdateDownloadPage();
+      return;
+    }
+    if (!window.confirm(`Install FluxDrop ${updateInfo.version ?? "update"} now? FluxDrop will exit and restart. Active transfers must finish first.`)) {
+      return;
+    }
+    setUpdateBusy(true);
+    setUpdateMessage(null);
+    try {
+      await installUpdate();
+    } catch (err) {
+      setUpdateMessage(err instanceof Error ? err.message : String(err));
+      setUpdateBusy(false);
     }
   }
 
@@ -422,7 +490,22 @@ export default function App() {
               addresses={addresses}
               onForgetHistoryLocations={forgetSavedHistoryLocations}
               onSave={saveSettings}
+              updateInfo={updateInfo}
+              updateBusy={updateBusy}
+              updateMessage={updateMessage}
+              onCheckUpdates={() => checkUpdates(true)}
+              onApplyUpdate={applyUpdate}
             />
+          ) : null}
+
+          {updateInfo?.available && view !== "settings" ? (
+            <div className="app-alert" role="status">
+              <strong>FluxDrop {updateInfo.version} is available</strong>
+              <span>{updateInfo.portable ? "Portable builds open the release download page." : updateInfo.downloaded ? "The signed update is verified and ready to install." : "The signed update is ready to download."}</span>
+              <button type="button" onClick={() => void applyUpdate()} disabled={updateBusy}>
+                {updateInfo.portable ? "Open download" : "Install update"}
+              </button>
+            </div>
           ) : null}
 
           {view === "history" ? (
@@ -447,10 +530,13 @@ export default function App() {
               history={history}
               historyBusyId={historyBusyId}
               settings={settings}
+              firewall={firewall}
+              firewallRepairing={firewallRepairing}
               onDropActive={setDragActive}
               onPaths={beginShare}
               onError={setError}
               onRefreshAddresses={refreshAddresses}
+              onRepairFirewall={runFirewallRepair}
               onRepeat={repeatHistoryEntry}
             />
           ) : null}
@@ -466,9 +552,12 @@ export default function App() {
               history={history}
               historyBusyId={historyBusyId}
               settings={settings}
+              firewall={firewall}
+              firewallRepairing={firewallRepairing}
               onStartReceive={beginReceive}
               onError={setError}
               onRefreshAddresses={refreshAddresses}
+              onRepairFirewall={runFirewallRepair}
               onRepeat={repeatHistoryEntry}
             />
           ) : null}
@@ -480,8 +569,11 @@ export default function App() {
               addresses={addresses}
               speedBytesPerSecond={sendSpeedBytesPerSecond}
               approvalBusy={approvalBusy}
+              firewall={firewall}
+              firewallRepairing={firewallRepairing}
               onDecision={decideDownload}
               onCancel={cancelCurrentShare}
+              onRepairFirewall={runFirewallRepair}
             />
           ) : null}
 
@@ -492,8 +584,11 @@ export default function App() {
               addresses={addresses}
               speedBytesPerSecond={receiveSpeedBytesPerSecond}
               approvalBusy={approvalBusy}
+              firewall={firewall}
+              firewallRepairing={firewallRepairing}
               onDecision={decideUpload}
               onCancel={cancelCurrentReceive}
+              onRepairFirewall={runFirewallRepair}
             />
           ) : null}
         </main>
@@ -513,11 +608,14 @@ interface StartWorkspaceProps {
   history: HistoryEntry[];
   historyBusyId: string | null;
   settings: AppSettings;
+  firewall: FirewallDiagnostic | null;
+  firewallRepairing: boolean;
   onDropActive?: (active: boolean) => void;
   onPaths?: (paths: string[], options?: CreateShareOptions) => void;
   onStartReceive?: (folder: string, options?: StartReceiveOptions) => void;
   onError: (message: string) => void;
   onRefreshAddresses: () => Promise<void>;
+  onRepairFirewall: () => Promise<void>;
   onRepeat: (entry: HistoryEntry) => Promise<void>;
 }
 
@@ -532,11 +630,14 @@ function StartWorkspace({
   history,
   historyBusyId,
   settings,
+  firewall,
+  firewallRepairing,
   onDropActive,
   onPaths,
   onStartReceive,
   onError,
   onRefreshAddresses,
+  onRepairFirewall,
   onRepeat
 }: StartWorkspaceProps) {
   const sending = direction === "send";
@@ -616,8 +717,11 @@ function StartWorkspace({
             direction={direction}
             refreshing={addressesRefreshing}
             settings={settings}
+            firewall={firewall}
+            firewallRepairing={firewallRepairing}
             transferOptions={transferOptions}
             onRefresh={() => void onRefreshAddresses()}
+            onRepair={() => void onRepairFirewall()}
           />
           <QuickGuide direction={direction} approvalRequired={transferOptions.approval_required} />
           <RecentTransfersPanel
@@ -648,8 +752,11 @@ interface ReadinessPanelProps {
   direction: "send" | "receive";
   refreshing: boolean;
   settings: AppSettings;
+  firewall: FirewallDiagnostic | null;
+  firewallRepairing: boolean;
   transferOptions: TransferOptionsDraft;
   onRefresh: () => void;
+  onRepair: () => void;
 }
 
 function ReadinessPanel({
@@ -659,8 +766,11 @@ function ReadinessPanel({
   direction,
   refreshing,
   settings,
+  firewall,
+  firewallRepairing,
   transferOptions,
-  onRefresh
+  onRefresh,
+  onRepair
 }: ReadinessPanelProps) {
   return (
     <aside className="panel readiness-panel">
@@ -685,6 +795,17 @@ function ReadinessPanel({
                 : "No private adapter found"
           }
         />
+        <ReadinessRow
+          ready={firewall?.state === "healthy"}
+          label="Windows Firewall"
+          value={firewall?.message ?? "Checking firewall policy"}
+          warning={Boolean(firewall && firewall.state !== "healthy")}
+        />
+        {firewall?.repair_available && firewall.state !== "public_network" ? (
+          <button className="subtle-button compact-button" type="button" onClick={onRepair} disabled={firewallRepairing}>
+            {firewallRepairing ? "Waiting for UAC..." : "Repair private firewall rule"}
+          </button>
+        ) : null}
         <ReadinessRow
           ready={transferOptions.approval_required}
           label="PC approval"
@@ -880,8 +1001,11 @@ interface SendWorkspaceProps {
   addresses: NetworkAddress[];
   speedBytesPerSecond: number;
   approvalBusy: boolean;
+  firewall: FirewallDiagnostic | null;
+  firewallRepairing: boolean;
   onDecision: (approved: boolean) => Promise<void>;
   onCancel: () => Promise<void>;
+  onRepairFirewall: () => Promise<void>;
 }
 
 function SendWorkspace({
@@ -890,8 +1014,11 @@ function SendWorkspace({
   addresses,
   speedBytesPerSecond,
   approvalBusy,
+  firewall,
+  firewallRepairing,
   onDecision,
-  onCancel
+  onCancel,
+  onRepairFirewall
 }: SendWorkspaceProps) {
   return (
     <>
@@ -928,7 +1055,14 @@ function SendWorkspace({
           <StatusCard share={share} status={status} speedBytesPerSecond={speedBytesPerSecond} />
           <div className="transfer-secondary-grid">
             <SecurityCard direction="send" expiresAt={status?.expires_at ?? share.expires_at} onCancel={() => void onCancel()} />
-            <HelpCard addresses={addresses} serverAddress={`${share.local_ip}:${share.port}`} status={status} />
+            <HelpCard
+              addresses={addresses}
+              serverAddress={`${share.local_ip}:${share.port}`}
+              status={status}
+              firewall={firewall}
+              firewallRepairing={firewallRepairing}
+              onRepairFirewall={onRepairFirewall}
+            />
           </div>
         </div>
         <QrCard share={share} />
@@ -943,8 +1077,11 @@ interface ReceiveWorkspaceProps {
   addresses: NetworkAddress[];
   speedBytesPerSecond: number;
   approvalBusy: boolean;
+  firewall: FirewallDiagnostic | null;
+  firewallRepairing: boolean;
   onDecision: (approved: boolean) => Promise<void>;
   onCancel: () => Promise<void>;
+  onRepairFirewall: () => Promise<void>;
 }
 
 function ReceiveWorkspace({
@@ -953,8 +1090,11 @@ function ReceiveWorkspace({
   addresses,
   speedBytesPerSecond,
   approvalBusy,
+  firewall,
+  firewallRepairing,
   onDecision,
-  onCancel
+  onCancel,
+  onRepairFirewall
 }: ReceiveWorkspaceProps) {
   return (
     <>
@@ -964,6 +1104,7 @@ function ReceiveWorkspace({
           clientIp={status.client_ip}
           fileName={status.file_name ?? "Unknown file"}
           fileSizeHuman={status.file_size_human ?? "Unknown size"}
+          files={status.files}
           approvalDeadline={status.approval_deadline}
           busy={approvalBusy}
           onApprove={() => void onDecision(true)}
@@ -976,8 +1117,8 @@ function ReceiveWorkspace({
           <h1>Waiting for your phone.</h1>
           <p>
             {receive.approval_required
-              ? "The file is written only after you approve its exact name and size."
-              : "The phone can upload one file within the configured size limit."}
+              ? "Files are published only after you approve the complete batch manifest."
+              : "The phone can upload a file batch within the configured total size limit."}
           </p>
         </div>
         <span className="live-badge">
@@ -994,7 +1135,14 @@ function ReceiveWorkspace({
               expiresAt={status?.expires_at ?? receive.expires_at}
               onCancel={() => void onCancel()}
             />
-            <HelpCard addresses={addresses} serverAddress={`${receive.local_ip}:${receive.port}`} status={status} />
+            <HelpCard
+              addresses={addresses}
+              serverAddress={`${receive.local_ip}:${receive.port}`}
+              status={status}
+              firewall={firewall}
+              firewallRepairing={firewallRepairing}
+              onRepairFirewall={onRepairFirewall}
+            />
           </div>
         </div>
         <ReceiveQrCard receive={receive} />
@@ -1006,11 +1154,26 @@ function ReceiveWorkspace({
 interface SettingsWorkspaceProps {
   settings: AppSettings;
   addresses: NetworkAddress[];
+  updateInfo: UpdateInfo | null;
+  updateBusy: boolean;
+  updateMessage: string | null;
   onForgetHistoryLocations: () => Promise<number>;
   onSave: (settings: AppSettings) => Promise<void>;
+  onCheckUpdates: () => Promise<void>;
+  onApplyUpdate: () => Promise<void>;
 }
 
-function SettingsWorkspace({ settings, addresses, onForgetHistoryLocations, onSave }: SettingsWorkspaceProps) {
+function SettingsWorkspace({
+  settings,
+  addresses,
+  updateInfo,
+  updateBusy,
+  updateMessage,
+  onForgetHistoryLocations,
+  onSave,
+  onCheckUpdates,
+  onApplyUpdate
+}: SettingsWorkspaceProps) {
   return (
     <>
       <section className="workspace-heading compact-heading">
@@ -1023,8 +1186,13 @@ function SettingsWorkspace({ settings, addresses, onForgetHistoryLocations, onSa
       <SettingsCard
         settings={settings}
         addresses={addresses}
+        updateInfo={updateInfo}
+        updateBusy={updateBusy}
+        updateMessage={updateMessage}
         onForgetHistoryLocations={onForgetHistoryLocations}
         onSave={onSave}
+        onCheckUpdates={onCheckUpdates}
+        onApplyUpdate={onApplyUpdate}
       />
     </>
   );

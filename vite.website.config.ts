@@ -16,6 +16,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         home: fileURLToPath(new URL("./website/index.html", import.meta.url)),
+        notFound: fileURLToPath(new URL("./website/404.html", import.meta.url)),
         security: fileURLToPath(new URL("./website/security.html", import.meta.url)),
         support: fileURLToPath(new URL("./website/support.html", import.meta.url))
       }

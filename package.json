@@ -1,6 +1,6 @@
 {
   "name": "fluxdrop",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,6 +13,7 @@
     "site:preview:secure": "node scripts/serve-secure-website.mjs",
     "site:audit": "node scripts/audit-website.mjs",
     "release:check": "node scripts/check-release-version.mjs",
+    "updater:validate": "node scripts/validate-updater-manifest.mjs",
     "tauri": "tauri"
   },
   "dependencies": {

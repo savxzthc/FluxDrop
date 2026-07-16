@@ -3,6 +3,7 @@ pub mod archive;
 pub mod commands;
 pub mod events;
 pub mod file_utils;
+pub mod firewall;
 pub mod history;
 pub mod network;
 pub mod rate_limit;
@@ -15,3 +16,4 @@ pub mod state;
 pub mod tls;
 #[cfg(not(test))]
 pub mod tray;
+pub mod updates;

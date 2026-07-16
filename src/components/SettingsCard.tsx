@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { AppSettings, NetworkAddress } from "../lib/api";
+import type { AppSettings, NetworkAddress, UpdateInfo } from "../lib/api";
 import { copyTextToClipboard } from "../lib/clipboard";
 import { formatBytes } from "../lib/format";
 
@@ -8,6 +8,11 @@ interface SettingsCardProps {
   addresses: NetworkAddress[];
   onForgetHistoryLocations: () => Promise<number>;
   onSave: (settings: AppSettings) => Promise<void>;
+  updateInfo: UpdateInfo | null;
+  updateBusy: boolean;
+  updateMessage: string | null;
+  onCheckUpdates: () => Promise<void>;
+  onApplyUpdate: () => Promise<void>;
 }
 
 const SECURE_DEFAULTS: AppSettings = {
@@ -19,12 +24,23 @@ const SECURE_DEFAULTS: AppSettings = {
   theme: "system",
   shell_integration: false,
   global_hotkey: false,
-  remember_transfer_locations: true
+  remember_transfer_locations: true,
+  automatic_updates: true
 };
 
 type SettingsMessage = { tone: "success" | "error"; text: string };
 
-export function SettingsCard({ settings, addresses, onForgetHistoryLocations, onSave }: SettingsCardProps) {
+export function SettingsCard({
+  settings,
+  addresses,
+  onForgetHistoryLocations,
+  onSave,
+  updateInfo,
+  updateBusy,
+  updateMessage,
+  onCheckUpdates,
+  onApplyUpdate
+}: SettingsCardProps) {
   const [draft, setDraft] = useState(settings);
   const [saving, setSaving] = useState(false);
   const [forgettingLocations, setForgettingLocations] = useState(false);
@@ -133,13 +149,44 @@ export function SettingsCard({ settings, addresses, onForgetHistoryLocations, on
               ...SECURE_DEFAULTS,
               theme: draft.theme,
               preferred_lan_ip: draft.preferred_lan_ip,
-              remember_transfer_locations: draft.remember_transfer_locations
+              remember_transfer_locations: draft.remember_transfer_locations,
+              automatic_updates: draft.automatic_updates
             })
           }
           disabled={saving}
         >
           Restore secure defaults
         </button>
+      </div>
+      <div className="settings-privacy-tools">
+        <div>
+          <span className="eyebrow">Signed updates</span>
+          <strong>
+            {updateInfo?.available
+              ? `FluxDrop ${updateInfo.version} is available`
+              : `FluxDrop ${updateInfo?.current_version ?? "update status"}`}
+          </strong>
+          <p>
+            {updateMessage ??
+              (updateInfo?.available
+                ? updateInfo.portable
+                  ? "Portable builds report updates and open the release page without modifying themselves."
+                  : updateInfo.downloaded
+                    ? "The signed update was downloaded and verified. Installation waits for your confirmation."
+                    : "The signed update can be downloaded when you choose to install it."
+                : "Checks GitHub-hosted signed release metadata. Installed builds can update automatically.")}
+          </p>
+        </div>
+        <div className="settings-actions">
+          <button className="subtle-button compact-button" type="button" onClick={() => void onCheckUpdates()} disabled={updateBusy}>
+            {updateBusy ? "Checking..." : "Check now"}
+          </button>
+          {updateInfo?.available ? (
+            <button className="secondary-button" type="button" onClick={() => void onApplyUpdate()} disabled={updateBusy}>
+              {updateInfo.portable ? "Open download page" : "Install update"}
+            </button>
+          ) : null}
+        </div>
       </div>
       <div className="settings-privacy-tools">
         <div>
@@ -215,6 +262,17 @@ export function SettingsCard({ settings, addresses, onForgetHistoryLocations, on
             </label>
           ))}
         </fieldset>
+        <label className="toggle-row">
+          <input
+            type="checkbox"
+            checked={draft.automatic_updates}
+            onChange={(event) => setDraft({ ...draft, automatic_updates: event.target.checked })}
+          />
+          <span>
+            <strong>Automatic updates</strong>
+            <small>Installed builds download signed updates in the background and ask before restarting.</small>
+          </span>
+        </label>
         <label className="toggle-row">
           <input
             type="checkbox"
@@ -306,7 +364,8 @@ function sameSettings(a: AppSettings, b: AppSettings) {
     a.theme === b.theme &&
     a.shell_integration === b.shell_integration &&
     a.global_hotkey === b.global_hotkey &&
-    a.remember_transfer_locations === b.remember_transfer_locations
+    a.remember_transfer_locations === b.remember_transfer_locations &&
+    a.automatic_updates === b.automatic_updates
   );
 }
 
@@ -342,6 +401,7 @@ function buildDiagnostics(
     `- Explorer integration: ${settings.shell_integration ? "enabled" : "disabled"}`,
     `- Global hotkey: ${settings.global_hotkey ? "enabled" : "disabled"}`,
     `- Remember transfer locations: ${settings.remember_transfer_locations ? "enabled" : "disabled"}`,
+    `- Automatic updates: ${settings.automatic_updates ? "enabled" : "disabled"}`,
     "",
     "Detected LAN addresses",
     ...(addresses.length > 0

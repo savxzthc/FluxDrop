@@ -131,3 +131,10 @@ Accepts one streamed multipart field named `file` only after approval. FluxDrop:
 On first server start, FluxDrop generates a private key and self-signed certificate whose subject alternative name is the selected LAN IP. The PEM files are stored in the app configuration directory and reused while that IP remains selected. Changing the LAN IP regenerates the certificate before the listener restarts.
 
 The self-signed certificate encrypts traffic but provides no independently trusted identity. It protects against passive observation after the browser proceeds, but not an active attacker capable of intercepting onboarding or substituting another self-signed endpoint.
+## FluxDrop v0.4 reliability extensions
+
+- `GET` and `HEAD /download/:token` support one `Range: bytes=...` request for ordinary files and return `206`, `Content-Range`, `Content-Length`, and `Accept-Ranges: bytes`. Malformed, multi-range, and unsatisfiable requests return `416` with `Content-Range: bytes */<size>`.
+- ZIP payloads ignore `Range` and continue as streamed `200` responses without a temporary archive.
+- `POST /api/upload-request/:token` accepts `{ files: [{ file_name, mime_type, size }], file_count, total_size }`.
+- `POST /upload/:token` accepts one multipart body containing ordered `files` parts that exactly match the approved manifest.
+- Receive status includes `files`, `file_count`, `total_size`, `total_size_human`, and aggregate `bytes_received` progress.

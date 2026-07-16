@@ -53,3 +53,6 @@ Pull-request CI focuses on Rust formatting, linting, tests, audits, and frontend
 - [x] Phone-to-PC Receive mode with approval, progress, size limits, and safe temp-file finalization
 
 Cloud sync is intentionally out of scope. Requests for cloud sync should be redirected because that is a different product.
+## v0.4 reliability release
+
+Delivered: resumable ordinary-file downloads, multi-file phone upload batches, Windows Firewall diagnosis/repair, and signed installed-build updates. Cloud transfer, accounts, mDNS discovery, macOS, and Linux remain deferred.

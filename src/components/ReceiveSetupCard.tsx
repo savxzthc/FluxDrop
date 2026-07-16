@@ -48,7 +48,7 @@ export function ReceiveSetupCard({
         </button>
       </div>
       <div className="drop-footnote">
-        <span>You approve the exact filename and size</span>
+        <span>You approve the complete file manifest and total size</span>
         <span>Partial uploads are cleaned automatically</span>
       </div>
       {error ? <p className="inline-error">{error}</p> : null}

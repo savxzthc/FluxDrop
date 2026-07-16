@@ -6,6 +6,7 @@ interface ApprovalPromptProps {
   clientIp: string | null;
   fileName: string;
   fileSizeHuman: string;
+  files?: Array<{ file_name: string; size: number }>;
   approvalDeadline?: string | null;
   busy: boolean;
   onApprove: () => void;
@@ -17,6 +18,7 @@ export function ApprovalPrompt({
   clientIp,
   fileName,
   fileSizeHuman,
+  files,
   approvalDeadline,
   busy,
   onApprove,
@@ -43,6 +45,12 @@ export function ApprovalPrompt({
           <strong>{clientIp ?? "Unknown device"}</strong> requested{" "}
           <strong>{fileName}</strong> ({fileSizeHuman}).
         </p>
+        {isUpload && files && files.length > 1 ? (
+          <p className="approval-manifest" title={files.map((file) => file.file_name).join("\n")}>
+            {files.slice(0, 4).map((file) => file.file_name).join(", ")}
+            {files.length > 4 ? `, and ${files.length - 4} more` : ""}
+          </p>
+        ) : null}
         <div className="approval-countdown">
           <span>{remainingSeconds > 0 ? `Request expires in ${formatDuration(remainingSeconds)}` : "Request expired"}</span>
           <i>

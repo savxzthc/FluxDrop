@@ -8,6 +8,12 @@ Thumbs.db
 *.log
 .env
 .env.local
+website/*.7z
+website/*.rar
+website/*.tar
+website/*.tar.gz
+website/*.tgz
+website/*.zip
 project-instructions.md
 src-tauri/WixTools/
 src-tauri/gen/

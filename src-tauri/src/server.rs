@@ -1,7 +1,7 @@
 use crate::events;
 use crate::events::EventHandle;
 use crate::file_utils::{content_disposition_filename, format_file_size, sanitize_filename};
-use crate::receive::{ReceiveSession, ReceiveStatusInfo};
+use crate::receive::{ReceiveFileManifest, ReceiveSession, ReceiveStatusInfo};
 use crate::share::{
     ArchiveEntrySource, SharePayload, ShareSession, ShareStatus, ShareStatusInfo, TOKEN_CHARS,
 };
@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::io;
 use std::net::{IpAddr, SocketAddr, TcpListener as StdTcpListener};
 use std::time::{Duration, Instant};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio_util::io::ReaderStream;
 use tokio_util::sync::CancellationToken;
 
@@ -89,8 +89,15 @@ struct ShareMetadata {
 
 #[derive(Debug, Deserialize)]
 struct UploadRequestMetadata {
+    files: Vec<UploadRequestFile>,
+    file_count: usize,
+    total_size: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct UploadRequestFile {
     file_name: String,
-    file_size: u64,
+    size: u64,
     mime_type: Option<String>,
 }
 
@@ -99,8 +106,8 @@ struct ReceiveSnapshot {
     token: String,
     destination_folder: std::path::PathBuf,
     max_upload_bytes: u64,
-    file_name: Option<String>,
-    declared_size: Option<u64>,
+    files: Vec<ReceiveFileManifest>,
+    total_size: Option<u64>,
 }
 
 pub async fn start_server(
@@ -428,6 +435,26 @@ mod tests {
         serde_json::from_slice(&body).expect("json body")
     }
 
+    async fn resumable_file_share(contents: &[u8]) -> (tempfile::TempDir, AppState, String) {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let path = directory.path().join("range.txt");
+        std::fs::write(&path, contents).expect("write range fixture");
+        let share = ShareSession::new_with_options(
+            path,
+            "range.txt".into(),
+            "range.txt".into(),
+            contents.len() as u64,
+            "text/plain".into(),
+            10,
+            true,
+            false,
+        );
+        let token = share.token.clone();
+        let state = AppState::new();
+        state.write().await.current_share = Some(share);
+        (directory, state, token)
+    }
+
     #[tokio::test]
     async fn test_invalid_token_returns_404() {
         let router = build_router(AppState::new(), None);
@@ -698,6 +725,133 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn bounded_open_and_suffix_ranges_are_standards_compliant() {
+        for (range, expected_range, expected_body) in [
+            ("bytes=2-5", "bytes 2-5/10", b"2345".as_slice()),
+            ("bytes=6-", "bytes 6-9/10", b"6789".as_slice()),
+            ("bytes=-3", "bytes 7-9/10", b"789".as_slice()),
+            ("bytes=0-99", "bytes 0-9/10", b"0123456789".as_slice()),
+        ] {
+            let (_directory, state, token) = resumable_file_share(b"0123456789").await;
+            let response = request_with(
+                build_router(state, None),
+                "GET",
+                &format!("/download/{token}"),
+                vec![("range", range)],
+                Body::empty(),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+            assert_eq!(response.headers()[header::ACCEPT_RANGES], "bytes");
+            assert_eq!(response.headers()[header::CONTENT_RANGE], expected_range);
+            assert_eq!(
+                response.headers()[header::CONTENT_LENGTH],
+                expected_body.len().to_string()
+            );
+            let body = response
+                .into_body()
+                .collect()
+                .await
+                .expect("body")
+                .to_bytes();
+            assert_eq!(body.as_ref(), expected_body);
+        }
+    }
+
+    #[tokio::test]
+    async fn malformed_multi_range_and_unsatisfiable_requests_return_416() {
+        for range in [
+            "items=0-1",
+            "bytes=",
+            "bytes=4-2",
+            "bytes=0-1,4-5",
+            "bytes=10-",
+            "bytes=-0",
+        ] {
+            let (_directory, state, token) = resumable_file_share(b"0123456789").await;
+            let response = request_with(
+                build_router(state, None),
+                "GET",
+                &format!("/download/{token}"),
+                vec![("range", range)],
+                Body::empty(),
+            )
+            .await;
+            assert_eq!(
+                response.status(),
+                StatusCode::RANGE_NOT_SATISFIABLE,
+                "{range}"
+            );
+            assert_eq!(response.headers()[header::CONTENT_RANGE], "bytes */10");
+            assert_eq!(response.headers()[header::ACCEPT_RANGES], "bytes");
+        }
+    }
+
+    #[tokio::test]
+    async fn resumed_ranges_complete_single_use_only_after_full_coverage() {
+        let (_directory, state, token) = resumable_file_share(b"0123456789").await;
+        let first = request_with(
+            build_router(state.clone(), None),
+            "GET",
+            &format!("/download/{token}"),
+            vec![("range", "bytes=5-9")],
+            Body::empty(),
+        )
+        .await;
+        assert_eq!(first.status(), StatusCode::PARTIAL_CONTENT);
+        first.into_body().collect().await.expect("first body");
+        {
+            let guard = state.read().await;
+            let share = guard.current_share.as_ref().expect("share");
+            assert_eq!(share.served_intervals, vec![(5, 10)]);
+            assert_eq!(share.bytes_sent, 5);
+            assert!(!matches!(share.status, ShareStatus::Completed));
+        }
+
+        let second = request_with(
+            build_router(state.clone(), None),
+            "GET",
+            &format!("/download/{token}"),
+            vec![("range", "bytes=0-4")],
+            Body::empty(),
+        )
+        .await;
+        second.into_body().collect().await.expect("second body");
+        {
+            let guard = state.read().await;
+            let share = guard.current_share.as_ref().expect("share");
+            assert_eq!(share.served_intervals, vec![(0, 10)]);
+            assert_eq!(share.status, ShareStatus::Completed);
+            assert_eq!(guard.history.len(), 1);
+        }
+        let rejected = request(build_router(state, None), &format!("/download/{token}")).await;
+        assert_eq!(rejected.status(), StatusCode::GONE);
+    }
+
+    #[tokio::test]
+    async fn head_range_returns_headers_without_completing_transfer() {
+        let (_directory, state, token) = resumable_file_share(b"0123456789").await;
+        let response = request_with(
+            build_router(state.clone(), None),
+            "HEAD",
+            &format!("/download/{token}"),
+            vec![("range", "bytes=1-3")],
+            Body::empty(),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(response.headers()[header::CONTENT_RANGE], "bytes 1-3/10");
+        assert!(state
+            .read()
+            .await
+            .current_share
+            .as_ref()
+            .expect("share")
+            .served_intervals
+            .is_empty());
+    }
+
+    #[tokio::test]
     async fn test_zip_archive_stream_is_valid_and_preserves_paths() {
         let directory = tempfile::tempdir().expect("tempdir");
         let first = directory.path().join("one.txt");
@@ -768,6 +922,61 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn zip_download_ignores_range_and_remains_streamed() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let source = directory.path().join("one.txt");
+        std::fs::write(&source, b"one").expect("write source");
+        let share = ShareSession::new_with_payload(
+            SharePayload::ZipArchive {
+                entries: vec![ArchiveEntrySource {
+                    source_path: Some(source.clone()),
+                    archive_path: "one.txt".to_string(),
+                    size: 3,
+                    is_directory: false,
+                }],
+            },
+            vec![source],
+            "bundle.zip".into(),
+            "bundle.zip".into(),
+            3,
+            "application/zip".into(),
+            1,
+            true,
+            10,
+            true,
+            false,
+        );
+        let token = share.token.clone();
+        let state = AppState::new();
+        state.write().await.current_share = Some(share);
+        let response = request_with(
+            build_router(state, None),
+            "GET",
+            &format!("/download/{token}"),
+            vec![("range", "bytes=1-2")],
+            Body::empty(),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(!response.headers().contains_key(header::ACCEPT_RANGES));
+        assert!(!response.headers().contains_key(header::CONTENT_LENGTH));
+        let bytes = response
+            .into_body()
+            .collect()
+            .await
+            .expect("zip body")
+            .to_bytes();
+        let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).expect("valid zip");
+        let mut contents = String::new();
+        archive
+            .by_name("one.txt")
+            .unwrap()
+            .read_to_string(&mut contents)
+            .unwrap();
+        assert_eq!(contents, "one");
+    }
+
+    #[tokio::test]
     async fn test_upload_requires_approval_before_body_is_accepted() {
         let destination = tempfile::tempdir().expect("tempdir");
         let receive = ReceiveSession::new(destination.path().to_path_buf(), 10, true, 1024);
@@ -776,9 +985,9 @@ mod tests {
         state.write().await.receive_session = Some(receive);
         let router = build_router(state.clone(), None);
         let metadata = serde_json::json!({
-            "file_name": "photo.jpg",
-            "file_size": 5,
-            "mime_type": "image/jpeg"
+            "files": [{ "file_name": "photo.jpg", "size": 5, "mime_type": "image/jpeg" }],
+            "file_count": 1,
+            "total_size": 5
         });
         let response = request_with(
             router,
@@ -802,7 +1011,7 @@ mod tests {
 
         let boundary = "fluxdrop-test";
         let body = format!(
-            "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"photo.jpg\"\r\nContent-Type: image/jpeg\r\n\r\nhello\r\n--{boundary}--\r\n"
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"files\"; filename=\"photo.jpg\"\r\nContent-Type: image/jpeg\r\n\r\nhello\r\n--{boundary}--\r\n"
         );
         let response = request_with(
             build_router(state, None),
@@ -829,9 +1038,9 @@ mod tests {
         let first_phone = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 20));
         let second_phone = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 21));
         let metadata = serde_json::json!({
-            "file_name": "photo.jpg",
-            "file_size": 5,
-            "mime_type": "image/jpeg"
+            "files": [{ "file_name": "photo.jpg", "size": 5, "mime_type": "image/jpeg" }],
+            "file_count": 1,
+            "total_size": 5
         });
         let response = request_from_with(
             build_router(state.clone(), None),
@@ -908,7 +1117,8 @@ mod tests {
             .to_bytes();
         let html = String::from_utf8_lossy(&body);
         assert!(html.contains(r#"data-max-upload-bytes="4096""#));
-        assert!(html.contains("Maximum upload size"));
+        assert!(html.contains("Maximum total upload size"));
+        assert!(html.contains("multiple"));
     }
 
     #[tokio::test]
@@ -919,9 +1129,9 @@ mod tests {
         let state = AppState::new();
         state.write().await.receive_session = Some(receive);
         let metadata = serde_json::json!({
-            "file_name": "../../secret.txt",
-            "file_size": 5,
-            "mime_type": "text/plain"
+            "files": [{ "file_name": "../../secret.txt", "size": 5, "mime_type": "text/plain" }],
+            "file_count": 1,
+            "total_size": 5
         });
         let response = request_with(
             build_router(state.clone(), None),
@@ -935,7 +1145,7 @@ mod tests {
 
         let boundary = "fluxdrop-upload";
         let body = format!(
-            "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"../../secret.txt\"\r\nContent-Type: text/plain\r\n\r\nhello\r\n--{boundary}--\r\n"
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"files\"; filename=\"../../secret.txt\"\r\nContent-Type: text/plain\r\n\r\nhello\r\n--{boundary}--\r\n"
         );
         let response = request_with(
             build_router(state, None),
@@ -962,6 +1172,128 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn multi_file_batch_is_sanitized_collision_safe_and_recorded_once() {
+        let destination = tempfile::tempdir().expect("tempdir");
+        std::fs::write(destination.path().join("same.txt"), b"existing").expect("existing");
+        let receive = ReceiveSession::new(destination.path().to_path_buf(), 10, false, 1024);
+        let token = receive.token.clone();
+        let state = AppState::new();
+        state.write().await.receive_session = Some(receive);
+        let metadata = serde_json::json!({
+            "files": [
+                { "file_name": "../../same.txt", "size": 3, "mime_type": "text/plain" },
+                { "file_name": "same.txt", "size": 3, "mime_type": "text/plain" }
+            ],
+            "file_count": 2,
+            "total_size": 6
+        });
+        let response = request_with(
+            build_router(state.clone(), None),
+            "POST",
+            &format!("/api/upload-request/{token}"),
+            vec![("content-type", "application/json")],
+            Body::from(metadata.to_string()),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+        let approved = json_body(response).await;
+        assert_eq!(approved["file_count"], 2);
+        assert_eq!(approved["total_size"], 6);
+        assert_eq!(approved["files"][0]["file_name"], "same.txt");
+
+        let boundary = "fluxdrop-batch";
+        let body = format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"files\"; filename=\"../../same.txt\"\r\nContent-Type: text/plain\r\n\r\none\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"files\"; filename=\"same.txt\"\r\nContent-Type: text/plain\r\n\r\ntwo\r\n--{boundary}--\r\n"
+        );
+        let response = request_with(
+            build_router(state.clone(), None),
+            "POST",
+            &format!("/upload/{token}"),
+            vec![(
+                "content-type",
+                "multipart/form-data; boundary=fluxdrop-batch",
+            )],
+            Body::from(body),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            std::fs::read(destination.path().join("same.txt")).unwrap(),
+            b"existing"
+        );
+        assert_eq!(
+            std::fs::read(destination.path().join("same (2).txt")).unwrap(),
+            b"one"
+        );
+        assert_eq!(
+            std::fs::read(destination.path().join("same (3).txt")).unwrap(),
+            b"two"
+        );
+        let guard = state.read().await;
+        assert_eq!(guard.history.len(), 1);
+        assert_eq!(guard.history[0].file_count, 2);
+        assert_eq!(guard.history[0].file_size, Some(6));
+    }
+
+    #[tokio::test]
+    async fn multipart_manifest_mismatch_publishes_nothing_and_cleans_temps() {
+        let destination = tempfile::tempdir().expect("tempdir");
+        let receive = ReceiveSession::new(destination.path().to_path_buf(), 10, false, 1024);
+        let token = receive.token.clone();
+        let state = AppState::new();
+        state.write().await.receive_session = Some(receive);
+        let metadata = serde_json::json!({
+            "files": [
+                { "file_name": "one.txt", "size": 3, "mime_type": "text/plain" },
+                { "file_name": "two.txt", "size": 3, "mime_type": "text/plain" }
+            ],
+            "file_count": 2,
+            "total_size": 6
+        });
+        let approved = request_with(
+            build_router(state.clone(), None),
+            "POST",
+            &format!("/api/upload-request/{token}"),
+            vec![("content-type", "application/json")],
+            Body::from(metadata.to_string()),
+        )
+        .await;
+        assert_eq!(approved.status(), StatusCode::ACCEPTED);
+        let boundary = "fluxdrop-mismatch";
+        let body = format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"files\"; filename=\"one.txt\"\r\nContent-Type: text/plain\r\n\r\none\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"files\"; filename=\"wrong.txt\"\r\nContent-Type: text/plain\r\n\r\ntwo\r\n--{boundary}--\r\n"
+        );
+        let response = request_with(
+            build_router(state, None),
+            "POST",
+            &format!("/upload/{token}"),
+            vec![(
+                "content-type",
+                "multipart/form-data; boundary=fluxdrop-mismatch",
+            )],
+            Body::from(body),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        assert_eq!(std::fs::read_dir(destination.path()).unwrap().count(), 0);
+    }
+
+    #[tokio::test]
+    async fn rollback_removes_only_newly_finalized_batch_files() {
+        let destination = tempfile::tempdir().expect("tempdir");
+        let existing = destination.path().join("existing.txt");
+        let first = destination.path().join("new-one.txt");
+        let second = destination.path().join("new-two.txt");
+        std::fs::write(&existing, b"keep").unwrap();
+        std::fs::write(&first, b"remove").unwrap();
+        std::fs::write(&second, b"remove").unwrap();
+        upload::rollback_finalized_files(&[first.clone(), second.clone()]).await;
+        assert!(existing.exists());
+        assert!(!first.exists());
+        assert!(!second.exists());
+    }
+
+    #[tokio::test]
     async fn test_upload_metadata_over_limit_is_rejected_early() {
         let destination = tempfile::tempdir().expect("tempdir");
         let receive = ReceiveSession::new(destination.path().to_path_buf(), 10, false, 4);
@@ -969,9 +1301,9 @@ mod tests {
         let state = AppState::new();
         state.write().await.receive_session = Some(receive);
         let metadata = serde_json::json!({
-            "file_name": "large.bin",
-            "file_size": 5,
-            "mime_type": "application/octet-stream"
+            "files": [{ "file_name": "large.bin", "size": 5, "mime_type": "application/octet-stream" }],
+            "file_count": 1,
+            "total_size": 5
         });
         let response = request_with(
             build_router(state, None),
@@ -1133,10 +1465,10 @@ mod tests {
             .to_bytes();
         let script = String::from_utf8_lossy(&body);
         assert!(script.contains("readApiError"));
-        assert!(script.contains("selectedFileTooLarge"));
+        assert!(script.contains("selectedBatchTooLarge"));
         assert!(script.contains("Ready to request approval"));
-        assert!(script.contains("The file size changed during upload"));
-        assert!(script.contains("could not safely store this upload"));
+        assert!(script.contains("file batch is invalid"));
+        assert!(script.contains("complete batch"));
         assert!(script.contains("Too many invalid attempts"));
         assert!(!script.contains("Upload failed:"));
     }

@@ -11,7 +11,7 @@ interface ReceiveStatusCardProps {
 export function ReceiveStatusCard({ receive, status, speedBytesPerSecond }: ReceiveStatusCardProps) {
   const current = status?.status ?? receive.status;
   const copy = statusCopy(current.kind, current.kind === "Error" ? current.message : undefined, "receive");
-  const total = status?.file_size ?? 0;
+  const total = status?.total_size ?? status?.file_size ?? 0;
   const received = status?.bytes_received ?? 0;
   const percent = status?.progress_percent ?? 0;
 
@@ -61,7 +61,7 @@ export function ReceiveStatusCard({ receive, status, speedBytesPerSecond }: Rece
           <dd>{status?.client_ip ?? "Not connected"}</dd>
         </div>
         <div>
-          <dt>Incoming file</dt>
+          <dt>Incoming batch</dt>
           <dd>{status?.file_name ?? "Not selected"}</dd>
         </div>
       </dl>

@@ -70,11 +70,18 @@ pub(super) async fn download_head(
     State(state): State<HttpState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(token): Path<String>,
+    headers: HeaderMap,
 ) -> Response {
     match validate_token(&state, &token, addr.ip(), true).await {
-        Ok(snapshot) => response_builder_for_download(&snapshot)
-            .body(Body::empty())
-            .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response()),
+        Ok(snapshot) => {
+            let range = match requested_range(&snapshot, &headers) {
+                Ok(range) => range,
+                Err(()) => return range_not_satisfiable(snapshot.file_size),
+            };
+            response_builder_for_download(&snapshot, range)
+                .body(Body::empty())
+                .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+        }
         Err(reason) => error_page_response(reason),
     }
 }
@@ -83,10 +90,15 @@ pub(super) async fn download_file(
     State(state): State<HttpState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(token): Path<String>,
+    headers: HeaderMap,
 ) -> Response {
     let snapshot = match validate_token(&state, &token, addr.ip(), true).await {
         Ok(snapshot) => snapshot,
         Err(reason) => return error_page_response(reason),
+    };
+    let range = match requested_range(&snapshot, &headers) {
+        Ok(range) => range,
+        Err(()) => return range_not_satisfiable(snapshot.file_size),
     };
 
     {
@@ -105,7 +117,7 @@ pub(super) async fn download_file(
 
     let body = match snapshot.payload.clone() {
         SharePayload::SingleFile { path } => {
-            let file = match tokio::fs::File::open(path).await {
+            let mut file = match tokio::fs::File::open(path).await {
                 Ok(file) => file,
                 Err(_) => {
                     set_error_status(
@@ -123,20 +135,33 @@ pub(super) async fn download_file(
                         .into_response();
                 }
             };
-            single_file_body(state.clone(), &snapshot, file)
+            let (start, end_exclusive) = range
+                .map(|value| (value.start, value.end + 1))
+                .unwrap_or((0, snapshot.file_size));
+            if file.seek(std::io::SeekFrom::Start(start)).await.is_err() {
+                set_error_status(&state, "FluxDrop could not seek within the selected file.").await;
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            }
+            single_file_body(state.clone(), &snapshot, file, start, end_exclusive)
         }
         SharePayload::ZipArchive { entries } => zip_archive_body(state.clone(), &snapshot, entries),
     };
 
-    response_builder_for_download(&snapshot)
+    response_builder_for_download(&snapshot, range)
         .body(body)
         .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
-fn single_file_body(state: HttpState, snapshot: &ShareSnapshot, file: tokio::fs::File) -> Body {
+fn single_file_body(
+    state: HttpState,
+    snapshot: &ShareSnapshot,
+    file: tokio::fs::File,
+    start: u64,
+    end_exclusive: u64,
+) -> Body {
     let app_state = state.app_state.clone();
     let token = snapshot.token.clone();
-    let file_size = snapshot.file_size;
+    let expected = end_exclusive.saturating_sub(start);
     let stream = stream! {
         let mut file = file;
         let mut buffer = vec![0_u8; 512 * 1024];
@@ -144,7 +169,12 @@ fn single_file_body(state: HttpState, snapshot: &ShareSnapshot, file: tokio::fs:
         let mut last_emit = Instant::now() - Duration::from_millis(250);
 
         loop {
-            let read = match file.read(&mut buffer).await {
+            let remaining = expected.saturating_sub(sent);
+            if remaining == 0 {
+                break;
+            }
+            let read_limit = usize::try_from(remaining.min(buffer.len() as u64)).unwrap_or(buffer.len());
+            let read = match file.read(&mut buffer[..read_limit]).await {
                 Ok(read) => read,
                 Err(err) => {
                     set_error_status(&state, "FluxDrop could not finish reading the selected file.").await;
@@ -153,10 +183,11 @@ fn single_file_body(state: HttpState, snapshot: &ShareSnapshot, file: tokio::fs:
                 }
             };
             if read == 0 {
-                break;
+                set_error_status(&state, "The selected file changed before the requested bytes could be read.").await;
+                return;
             }
             sent = sent.saturating_add(read as u64);
-            if last_emit.elapsed() >= Duration::from_millis(150) || sent == file_size {
+            if last_emit.elapsed() >= Duration::from_millis(150) || sent == expected {
                 let info = update_progress(&app_state, &token, sent, "Download in progress.").await;
                 if let Some(info) = info {
                     events::emit_share_status(state.app.as_ref(), "progress_updated", &info);
@@ -166,9 +197,12 @@ fn single_file_body(state: HttpState, snapshot: &ShareSnapshot, file: tokio::fs:
             yield Ok::<Bytes, std::io::Error>(Bytes::copy_from_slice(&buffer[..read]));
         }
 
-        let completed_info = mark_completed(&app_state, &token).await;
-        if let Some(info) = completed_info {
-            events::emit_share_status(state.app.as_ref(), "download_completed", &info);
+        if let Some((info, complete)) = mark_range_served(&app_state, &token, start, end_exclusive).await {
+            events::emit_share_status(
+                state.app.as_ref(),
+                if complete { "download_completed" } else { "download_range_completed" },
+                &info,
+            );
         }
     };
     Body::from_stream(stream)
@@ -265,9 +299,73 @@ pub(super) async fn write_zip_archive(
     Ok(())
 }
 
-fn response_builder_for_download(snapshot: &ShareSnapshot) -> http::response::Builder {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ByteRange {
+    start: u64,
+    end: u64,
+}
+
+fn requested_range(snapshot: &ShareSnapshot, headers: &HeaderMap) -> Result<Option<ByteRange>, ()> {
+    if snapshot.is_archive {
+        return Ok(None);
+    }
+    let Some(value) = headers.get(header::RANGE) else {
+        return Ok(None);
+    };
+    parse_range(value.to_str().map_err(|_| ())?, snapshot.file_size).map(Some)
+}
+
+fn parse_range(value: &str, size: u64) -> Result<ByteRange, ()> {
+    let (unit, spec) = value.split_once('=').ok_or(())?;
+    if !unit.trim().eq_ignore_ascii_case("bytes") || spec.contains(',') || size == 0 {
+        return Err(());
+    }
+    let (start, end) = spec.trim().split_once('-').ok_or(())?;
+    if start.is_empty() {
+        let suffix = end.parse::<u64>().map_err(|_| ())?;
+        if suffix == 0 {
+            return Err(());
+        }
+        return Ok(ByteRange {
+            start: size.saturating_sub(suffix.min(size)),
+            end: size - 1,
+        });
+    }
+    let start = start.parse::<u64>().map_err(|_| ())?;
+    if start >= size {
+        return Err(());
+    }
+    let end = if end.is_empty() {
+        size - 1
+    } else {
+        end.parse::<u64>().map_err(|_| ())?.min(size - 1)
+    };
+    if start > end {
+        return Err(());
+    }
+    Ok(ByteRange { start, end })
+}
+
+fn range_not_satisfiable(size: u64) -> Response {
+    http::Response::builder()
+        .status(StatusCode::RANGE_NOT_SATISFIABLE)
+        .header(header::ACCEPT_RANGES, "bytes")
+        .header(header::CONTENT_RANGE, format!("bytes */{size}"))
+        .header(header::CACHE_CONTROL, "no-store")
+        .body(Body::empty())
+        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+}
+
+fn response_builder_for_download(
+    snapshot: &ShareSnapshot,
+    range: Option<ByteRange>,
+) -> http::response::Builder {
     let builder = http::Response::builder()
-        .status(StatusCode::OK)
+        .status(if range.is_some() {
+            StatusCode::PARTIAL_CONTENT
+        } else {
+            StatusCode::OK
+        })
         .header(header::CONTENT_TYPE, snapshot.mime_type.as_str())
         .header(
             header::CONTENT_DISPOSITION,
@@ -282,7 +380,28 @@ fn response_builder_for_download(snapshot: &ShareSnapshot) -> http::response::Bu
     if snapshot.is_archive {
         builder
     } else {
-        builder.header(header::CONTENT_LENGTH, snapshot.file_size.to_string())
+        let requested = range.is_some();
+        let range = range.unwrap_or(ByteRange {
+            start: 0,
+            end: snapshot.file_size.saturating_sub(1),
+        });
+        let builder = builder.header(header::ACCEPT_RANGES, "bytes").header(
+            header::CONTENT_LENGTH,
+            range
+                .end
+                .saturating_sub(range.start)
+                .saturating_add(1)
+                .min(snapshot.file_size)
+                .to_string(),
+        );
+        if requested {
+            builder.header(
+                header::CONTENT_RANGE,
+                format!("bytes {}-{}/{}", range.start, range.end, snapshot.file_size),
+            )
+        } else {
+            builder
+        }
     }
 }
 
@@ -453,6 +572,42 @@ pub(super) async fn mark_completed(app_state: &AppState, token: &str) -> Option<
     };
     let _ = crate::history::record_share(app_state, &terminal_share).await;
     Some(info)
+}
+
+async fn mark_range_served(
+    app_state: &AppState,
+    token: &str,
+    start: u64,
+    end_exclusive: u64,
+) -> Option<(ShareStatusInfo, bool)> {
+    let (info, terminal_share, complete) = {
+        let mut guard = app_state.write().await;
+        let local_address = guard
+            .server
+            .as_ref()
+            .map(|server| server.address.to_string());
+        let share = guard.current_share.as_mut()?;
+        if share.token != token {
+            return None;
+        }
+        let complete = share.record_served_interval(start, end_exclusive);
+        if complete {
+            share.mark_download_completed();
+        }
+        let message = if complete {
+            "Download completed.".to_string()
+        } else {
+            "Requested byte range completed; the link remains available for resume.".to_string()
+        };
+        let info = share.status_info(local_address, Some(message.clone()));
+        let terminal_share = complete.then(|| share.clone());
+        guard.last_request_status = Some(message);
+        (info, terminal_share, complete)
+    };
+    if let Some(share) = terminal_share.as_ref() {
+        let _ = crate::history::record_share(app_state, share).await;
+    }
+    Some((info, complete))
 }
 
 async fn set_error_status(state: &HttpState, message: &str) {

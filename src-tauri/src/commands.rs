@@ -528,6 +528,16 @@ pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, Str
 }
 
 #[tauri::command]
+pub async fn diagnose_firewall() -> Result<crate::firewall::FirewallDiagnostic, String> {
+    Ok(crate::firewall::diagnose().await)
+}
+
+#[tauri::command]
+pub async fn repair_firewall() -> Result<(), String> {
+    crate::firewall::launch_elevated_repair()
+}
+
+#[tauri::command]
 pub async fn update_settings(
     new_settings: AppSettings,
     state: State<'_, AppState>,

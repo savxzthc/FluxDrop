@@ -74,6 +74,8 @@ pub struct ShareSession {
     pub download_started_at: Option<DateTime<Utc>>,
     pub download_finished_at: Option<DateTime<Utc>>,
     pub bytes_sent: u64,
+    #[serde(default)]
+    pub served_intervals: Vec<(u64, u64)>,
     pub client_ip: Option<IpAddr>,
     pub status: ShareStatus,
 }
@@ -205,6 +207,7 @@ impl ShareSession {
             download_started_at: None,
             download_finished_at: None,
             bytes_sent: 0,
+            served_intervals: Vec::new(),
             client_ip: None,
             status: ShareStatus::Preparing,
         }
@@ -274,9 +277,8 @@ impl ShareSession {
 
     pub fn mark_download_started(&mut self, client_ip: IpAddr) {
         self.status = ShareStatus::Downloading;
-        self.download_started_at = Some(Utc::now());
+        self.download_started_at.get_or_insert_with(Utc::now);
         self.client_ip = Some(client_ip);
-        self.bytes_sent = 0;
     }
 
     pub fn mark_download_completed(&mut self) {
@@ -290,6 +292,38 @@ impl ShareSession {
 
     pub fn update_progress(&mut self, bytes_sent: u64) {
         self.bytes_sent = bytes_sent.min(self.file_size);
+    }
+
+    /// Records a fully served half-open byte interval and returns true once the
+    /// union of completed intervals covers the whole ordinary file.
+    pub fn record_served_interval(&mut self, start: u64, end_exclusive: u64) -> bool {
+        if start >= end_exclusive || start >= self.file_size {
+            return self.file_size == 0;
+        }
+        let mut merged = (start, end_exclusive.min(self.file_size));
+        let mut intervals = Vec::with_capacity(self.served_intervals.len() + 1);
+        for interval in self.served_intervals.drain(..) {
+            if interval.1 < merged.0 {
+                intervals.push(interval);
+            } else if merged.1 < interval.0 {
+                intervals.push(merged);
+                merged = interval;
+            } else {
+                merged.0 = merged.0.min(interval.0);
+                merged.1 = merged.1.max(interval.1);
+            }
+        }
+        intervals.push(merged);
+        intervals.sort_unstable_by_key(|interval| interval.0);
+        self.served_intervals = intervals;
+        self.bytes_sent = self
+            .served_intervals
+            .iter()
+            .map(|(start, end)| end.saturating_sub(*start))
+            .sum::<u64>()
+            .min(self.file_size);
+        self.file_size == 0
+            || matches!(self.served_intervals.as_slice(), [(0, end)] if *end >= self.file_size)
     }
 
     pub fn status_info(
@@ -528,5 +562,23 @@ mod tests {
         assert!(!share.approval_required);
         let remaining = share.expires_at - share.created_at;
         assert_eq!(remaining.num_minutes(), 30);
+    }
+
+    #[test]
+    fn served_intervals_merge_and_only_complete_full_coverage() {
+        let mut share = ShareSession::new(
+            PathBuf::from("file.txt"),
+            "file.txt".into(),
+            "file.txt".into(),
+            100,
+            "text/plain".into(),
+        );
+        assert!(!share.record_served_interval(50, 75));
+        assert!(!share.record_served_interval(0, 25));
+        assert!(!share.record_served_interval(20, 55));
+        assert_eq!(share.served_intervals, vec![(0, 75)]);
+        assert_eq!(share.bytes_sent, 75);
+        assert!(share.record_served_interval(75, 100));
+        assert_eq!(share.served_intervals, vec![(0, 100)]);
     }
 }

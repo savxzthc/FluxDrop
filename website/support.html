@@ -4,13 +4,13 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-elem 'self'; style-src-attr 'unsafe-inline'; img-src 'self'; font-src 'none'; connect-src 'none'; media-src 'none'; object-src 'none'; child-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types 'none'"
+      content="default-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-elem 'self'; style-src-attr 'unsafe-inline'; img-src 'self'; font-src 'none'; connect-src 'none'; media-src 'none'; object-src 'none'; child-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests; require-trusted-types-for 'script'; trusted-types 'none'"
     />
     <meta name="referrer" content="no-referrer" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="Install FluxDrop v0.3.0, connect your phone, configure transfer options, use Receive mode, and troubleshoot local network, certificate, and Windows Firewall issues."
+      content="Install FluxDrop v0.4.0, connect your phone, send upload batches, resume downloads, and diagnose Windows Firewall issues."
     />
     <meta name="theme-color" content="#0d1118" />
     <title>Support - FluxDrop</title>
@@ -31,7 +31,7 @@
         </nav>
         <div class="header-actions">
           <a class="text-link desktop-only" href="https://github.com/savxzthc/FluxDrop" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">&nearr;</span></a>
-          <a class="button button-small" href="https://github.com/savxzthc/FluxDrop/releases/tag/v0.3.0" target="_blank" rel="noopener noreferrer">Download</a>
+          <a class="button button-small" href="https://github.com/savxzthc/FluxDrop/releases/tag/v0.4.0" target="_blank" rel="noopener noreferrer">Download</a>
           <button class="menu-button" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="mobile-menu" data-menu-toggle><span></span><span></span></button>
         </div>
       </div>
@@ -51,7 +51,7 @@
               Start here for installation, per-transfer options, Receive mode, certificate onboarding,
               and connection fixes.
             </p>
-            <a class="button button-primary" href="https://github.com/savxzthc/FluxDrop/releases/tag/v0.3.0" target="_blank" rel="noopener noreferrer">Download FluxDrop v0.3.0</a>
+            <a class="button button-primary" href="https://github.com/savxzthc/FluxDrop/releases/tag/v0.4.0" target="_blank" rel="noopener noreferrer">Download FluxDrop v0.4.0</a>
           </div>
           <div class="requirements-card" data-reveal>
             <span>Requirements</span>
@@ -94,13 +94,13 @@
 
             <section id="receive-upload" data-reveal>
               <span class="section-label">Receive uploads</span>
-              <h2>Move a file from your phone to your PC.</h2>
+              <h2>Move a file batch from your phone to your PC.</h2>
               <ol class="instruction-list">
                 <li><span>1</span><div><strong>Open Receive</strong><p>Choose the destination folder where incoming files should be saved.</p></div></li>
                 <li><span>2</span><div><strong>Wait for the folder check</strong><p>FluxDrop verifies write access before it shows the upload QR code.</p></div></li>
-                <li><span>3</span><div><strong>Scan and select a file</strong><p>The phone page previews the file name and size before it asks the PC for approval.</p></div></li>
-                <li><span>4</span><div><strong>Approve the upload</strong><p>Review the phone IP, file name, file size, and configured upload limit before accepting.</p></div></li>
-                <li><span>5</span><div><strong>Let it finish</strong><p>FluxDrop writes to a temporary partial file, verifies the size, then publishes the final file without overwriting an existing name.</p></div></li>
+                <li><span>3</span><div><strong>Scan and select files</strong><p>The phone page previews the file count and aggregate size before it asks the PC for approval.</p></div></li>
+                <li><span>4</span><div><strong>Approve the batch</strong><p>Review the phone IP, sanitized filenames, MIME types, total size, and configured upload limit before accepting.</p></div></li>
+                <li><span>5</span><div><strong>Let it finish</strong><p>FluxDrop stages every file, verifies the complete manifest, then publishes the batch with collision-safe names.</p></div></li>
               </ol>
             </section>
 
@@ -196,7 +196,7 @@
         <div><a class="brand footer-brand" href="./"><span class="brand-mark" aria-hidden="true"><i></i><i></i></span><span>FluxDrop</span></a><p>Local file transfer between your Windows PC and phone.</p></div>
         <div class="footer-links">
           <div><strong>Product</strong><a href="./#how-it-works">How it works</a><a href="./#features">Features</a><a href="./security.html">Security</a></div>
-          <div><strong>Project</strong><a href="https://github.com/savxzthc/FluxDrop" target="_blank" rel="noopener noreferrer">GitHub</a><a href="https://github.com/savxzthc/FluxDrop/releases/tag/v0.3.0" target="_blank" rel="noopener noreferrer">v0.3.0 release</a><a href="https://github.com/savxzthc/FluxDrop/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a></div>
+          <div><strong>Project</strong><a href="https://github.com/savxzthc/FluxDrop" target="_blank" rel="noopener noreferrer">GitHub</a><a href="https://github.com/savxzthc/FluxDrop/releases/tag/v0.4.0" target="_blank" rel="noopener noreferrer">v0.4.0 release</a><a href="https://github.com/savxzthc/FluxDrop/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a></div>
           <div><strong>Help</strong><a href="./support.html">Support</a><a href="https://github.com/savxzthc/FluxDrop/issues" target="_blank" rel="noopener noreferrer">Issues</a><a href="https://github.com/savxzthc/FluxDrop/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT license</a></div>
         </div>
       </div>

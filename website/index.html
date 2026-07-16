@@ -4,13 +4,13 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-elem 'self'; style-src-attr 'unsafe-inline'; img-src 'self'; font-src 'none'; connect-src 'none'; media-src 'none'; object-src 'none'; child-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types 'none'"
+      content="default-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-elem 'self'; style-src-attr 'unsafe-inline'; img-src 'self'; font-src 'none'; connect-src 'none'; media-src 'none'; object-src 'none'; child-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests; require-trusted-types-for 'script'; trusted-types 'none'"
     />
     <meta name="referrer" content="no-referrer" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="FluxDrop v0.3.0 sends files directly between your Windows PC and phone over local Wi-Fi with per-transfer controls, local history privacy, and stronger transfer hardening."
+      content="FluxDrop v0.4.0 sends resumable downloads and atomic upload batches over local Wi-Fi with Windows Firewall diagnosis and signed updates."
     />
     <meta name="theme-color" content="#0d1118" />
     <meta property="og:type" content="website" />
@@ -48,7 +48,7 @@
           >GitHub <span aria-hidden="true">&nearr;</span></a>
           <a
             class="button button-small"
-            href="https://github.com/savxzthc/FluxDrop/releases/tag/v0.3.0"
+            href="https://github.com/savxzthc/FluxDrop/releases/tag/v0.4.0"
             target="_blank"
             rel="noopener noreferrer"
           >Download</a>
@@ -86,7 +86,7 @@
             <div class="hero-actions">
               <a
                 class="button button-primary"
-                href="https://github.com/savxzthc/FluxDrop/releases/tag/v0.3.0"
+                href="https://github.com/savxzthc/FluxDrop/releases/tag/v0.4.0"
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -102,7 +102,7 @@
                 rel="noopener noreferrer"
               >Browse the source <span aria-hidden="true">&rarr;</span></a>
             </div>
-            <p class="hero-note">v0.3.0 is live with NSIS, MSI, and portable Windows builds.</p>
+            <p class="hero-note">v0.4.0 includes NSIS, MSI, portable, and signed updater builds.</p>
             <div class="trust-row" aria-label="Product highlights">
               <span><i class="status-dot"></i>Local HTTPS</span>
               <span>160-bit links</span>
@@ -153,27 +153,26 @@
           <div><strong>0</strong><span>accounts to create</span></div>
           <div><strong>1</strong><span>QR scan to connect</span></div>
           <div><strong>27 char</strong><span>URL-safe random tokens</span></div>
-          <div><strong>v0.3.0</strong><span>latest Windows release</span></div>
+          <div><strong>v0.4.0</strong><span>latest Windows release</span></div>
         </div>
       </section>
 
       <section class="section release-section" id="whats-new">
         <div class="shell release-layout">
           <div class="release-copy" data-reveal>
-            <span class="section-label">New in v0.3.0</span>
-            <h2>More control before the scan, <em>clearer status after it.</em></h2>
+            <span class="section-label">New in v0.4.0</span>
+            <h2>Transfers recover cleanly, <em>and Windows explains what is blocked.</em></h2>
             <p>
-              The latest release turns FluxDrop into a calmer daily tool: start screens check
-              your network before a share begins, each transfer can override the saved defaults,
-              and the history workspace is useful without becoming a path leak.
+              The reliability release adds resumable ordinary-file downloads, atomic multi-file
+              phone uploads, structured Windows Firewall checks, and signed updates for installed builds.
             </p>
             <div class="release-actions">
               <a
                 class="button button-primary"
-                href="https://github.com/savxzthc/FluxDrop/releases/tag/v0.3.0"
+                href="https://github.com/savxzthc/FluxDrop/releases/tag/v0.4.0"
                 target="_blank"
                 rel="noopener noreferrer"
-              >Read v0.3.0 release notes</a>
+              >Read v0.4.0 release notes</a>
               <a
                 class="inline-link"
                 href="https://github.com/savxzthc/FluxDrop/blob/main/CHANGELOG.md"
@@ -185,23 +184,23 @@
           <div class="release-grid" data-reveal>
             <article class="release-card">
               <span>01</span>
-              <h3>Ready checks <em>before you share</em></h3>
-              <p>FluxDrop now calls out LAN adapter state, link lifetime, approval mode, upload limits, and repeat-history behavior before the QR code is created.</p>
+              <h3>Downloads that <em>resume safely</em></h3>
+              <p>Ordinary files support HTTP byte ranges, and a one-time link closes only when completed ranges cover the whole file.</p>
             </article>
             <article class="release-card">
               <span>02</span>
-              <h3>Per-transfer <em>link options</em></h3>
-              <p>Choose expiration, approval, single-use behavior, and receive upload limits for the transfer in front of you without changing global defaults.</p>
+              <h3>Atomic <em>upload batches</em></h3>
+              <p>Select multiple phone files, approve one sanitized manifest, and publish nothing until the complete batch validates.</p>
             </article>
             <article class="release-card">
               <span>03</span>
-              <h3>Better <em>receive flow</em></h3>
-              <p>Phone-to-PC uploads get destination write checks, phone-side file-size preflight, clearer upload errors, and active transfer timelines.</p>
+              <h3>Firewall state <em>you can act on</em></h3>
+              <p>FluxDrop diagnoses missing, stale, wrong-profile, public-network, and unavailable-service states with private-only UAC repair.</p>
             </article>
             <article class="release-card">
               <span>04</span>
-              <h3>History with <em>privacy controls</em></h3>
-              <p>Search and filter local history, copy summaries or CSV, repeat old setups, or scrub saved local paths while keeping metadata.</p>
+              <h3>Signed <em>installed updates</em></h3>
+              <p>Installed builds verify and stage updates without interrupting transfers; portable builds only report and open releases.</p>
             </article>
             <article class="release-card">
               <span>05</span>
@@ -439,11 +438,10 @@
               <p>No. FluxDrop is intentionally designed for devices on the same private local network.</p>
             </details>
             <details>
-              <summary>What changed in v0.3.0?<span></span></summary>
+              <summary>What changed in v0.4.0?<span></span></summary>
               <p>
-                The release adds start-screen readiness checks, per-transfer link options,
-                searchable history with private path controls, receive upload preflight,
-                client-IP-bound approvals, stricter CSP, and safer storage/file handling.
+                The release adds resumable ordinary-file downloads, atomic multi-file receive batches,
+                Windows Firewall diagnosis and private-only repair, plus signed installed-build updates.
               </p>
             </details>
           </div>
@@ -460,7 +458,7 @@
           <div class="final-actions">
             <a
               class="button button-white"
-              href="https://github.com/savxzthc/FluxDrop/releases/tag/v0.3.0"
+              href="https://github.com/savxzthc/FluxDrop/releases/tag/v0.4.0"
               target="_blank"
               rel="noopener noreferrer"
             >Download for Windows</a>
@@ -489,7 +487,7 @@
           <div>
             <strong>Project</strong>
             <a href="https://github.com/savxzthc/FluxDrop" target="_blank" rel="noopener noreferrer">GitHub</a>
-            <a href="https://github.com/savxzthc/FluxDrop/releases/tag/v0.3.0" target="_blank" rel="noopener noreferrer">v0.3.0 release</a>
+            <a href="https://github.com/savxzthc/FluxDrop/releases/tag/v0.4.0" target="_blank" rel="noopener noreferrer">v0.4.0 release</a>
             <a href="https://github.com/savxzthc/FluxDrop/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
           </div>
           <div>

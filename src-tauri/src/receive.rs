@@ -6,6 +6,13 @@ use std::net::IpAddr;
 use std::path::PathBuf;
 use uuid::Uuid;
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReceiveFileManifest {
+    pub file_name: String,
+    pub mime_type: Option<String>,
+    pub size: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReceiveSession {
     pub id: Uuid,
@@ -19,9 +26,9 @@ pub struct ReceiveSession {
     pub approval_timed_out: bool,
     pub cancelled: bool,
     pub max_upload_bytes: u64,
-    pub file_name: Option<String>,
-    pub declared_size: Option<u64>,
-    pub mime_type: Option<String>,
+    pub files: Vec<ReceiveFileManifest>,
+    pub file_count: usize,
+    pub total_size: Option<u64>,
     pub bytes_received: u64,
     pub client_ip: Option<IpAddr>,
     pub status: ShareStatus,
@@ -45,6 +52,10 @@ pub struct ReceiveInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReceiveStatusInfo {
+    pub files: Vec<ReceiveFileManifest>,
+    pub file_count: usize,
+    pub total_size: Option<u64>,
+    pub total_size_human: Option<String>,
     pub file_name: Option<String>,
     pub file_size: Option<u64>,
     pub file_size_human: Option<String>,
@@ -82,9 +93,9 @@ impl ReceiveSession {
             approval_timed_out: false,
             cancelled: false,
             max_upload_bytes,
-            file_name: None,
-            declared_size: None,
-            mime_type: None,
+            files: Vec::new(),
+            file_count: 0,
+            total_size: None,
             bytes_received: 0,
             client_ip: None,
             status: ShareStatus::Ready,
@@ -95,17 +106,11 @@ impl ReceiveSession {
         Utc::now() >= self.expires_at
     }
 
-    pub fn request_approval(
-        &mut self,
-        client_ip: IpAddr,
-        file_name: String,
-        file_size: u64,
-        mime_type: Option<String>,
-    ) -> bool {
+    pub fn request_approval(&mut self, client_ip: IpAddr, files: Vec<ReceiveFileManifest>) -> bool {
         self.client_ip = Some(client_ip);
-        self.file_name = Some(file_name);
-        self.declared_size = Some(file_size);
-        self.mime_type = mime_type;
+        self.file_count = files.len();
+        self.total_size = Some(files.iter().map(|file| file.size).sum());
+        self.files = files;
         self.bytes_received = 0;
         self.approval_timed_out = false;
         if self.approval_required {
@@ -139,16 +144,27 @@ impl ReceiveSession {
         local_address: Option<String>,
         last_request_status: Option<String>,
     ) -> ReceiveStatusInfo {
-        let progress_percent = match self.declared_size {
+        let progress_percent = match self.total_size {
             Some(0) => 100.0,
             Some(size) => (self.bytes_received as f64 / size as f64 * 100.0).clamp(0.0, 100.0),
             None => 0.0,
         };
         ReceiveStatusInfo {
-            file_name: self.file_name.clone(),
-            file_size: self.declared_size,
-            file_size_human: self.declared_size.map(format_file_size),
-            mime_type: self.mime_type.clone(),
+            files: self.files.clone(),
+            file_count: self.file_count,
+            total_size: self.total_size,
+            total_size_human: self.total_size.map(format_file_size),
+            file_name: match self.files.as_slice() {
+                [] => None,
+                [file] => Some(file.file_name.clone()),
+                files => Some(format!("{} files", files.len())),
+            },
+            file_size: self.total_size,
+            file_size_human: self.total_size.map(format_file_size),
+            mime_type: match self.files.as_slice() {
+                [file] => file.mime_type.clone(),
+                _ => None,
+            },
             status: self.status.clone(),
             bytes_received: self.bytes_received,
             progress_percent,
@@ -178,13 +194,16 @@ mod tests {
         let mut session = ReceiveSession::new(PathBuf::from("downloads"), 10, true, 1024);
         let requested = session.request_approval(
             "192.168.1.22".parse().expect("ip"),
-            "photo.jpg".to_string(),
-            512,
-            Some("image/jpeg".to_string()),
+            vec![ReceiveFileManifest {
+                file_name: "photo.jpg".to_string(),
+                size: 512,
+                mime_type: Some("image/jpeg".to_string()),
+            }],
         );
         assert!(requested);
-        assert_eq!(session.file_name.as_deref(), Some("photo.jpg"));
-        assert_eq!(session.declared_size, Some(512));
+        assert_eq!(session.files[0].file_name, "photo.jpg");
+        assert_eq!(session.total_size, Some(512));
+        assert_eq!(session.file_count, 1);
         assert_eq!(session.status, ShareStatus::AwaitingApproval);
     }
 }

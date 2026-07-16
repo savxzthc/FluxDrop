@@ -110,11 +110,11 @@ pub(super) fn mobile_upload_html(snapshot: &ReceiveSnapshot) -> String {
 </head>
 <body data-token="{token}" data-max-upload-bytes="{max_upload_bytes}">
   <main>
-    <h1>Send a file to this PC</h1>
-    <p>Select one file. FluxDrop sends its name and size to the PC for approval before the upload begins.</p>
-    <p>Maximum upload size: <strong>{max_size}</strong></p>
+    <h1>Send files to this PC</h1>
+    <p>Select one or more files. FluxDrop sends the complete batch manifest to the PC for one approval before anything is stored.</p>
+    <p>Maximum total upload size: <strong>{max_size}</strong></p>
     <form id="upload-form">
-      <input id="file-input" name="file" type="file" required>
+      <input id="file-input" name="files" type="file" multiple required>
       <button id="upload-button" type="submit">Request upload</button>
     </form>
     <p id="status" aria-live="polite">Waiting for a file selection.</p>
@@ -207,7 +207,8 @@ pub(super) const UPLOAD_SCRIPT: &str = r#"(() => {
     expired: "This receive link has expired or was already used.",
     invalid_multipart: "The phone could not package this file correctly. Try selecting it again.",
     metadata_mismatch: "The selected file changed after approval. Choose it again and retry.",
-    missing_file: "No file was included in the upload.",
+    invalid_manifest: "The selected file batch is invalid. Choose the files again.",
+    missing_file: "One or more approved files were missing from the upload.",
     missing_filename: "Choose a file with a valid name.",
     not_found: "This receive link is invalid or has expired.",
     rate_limited: "Too many invalid attempts were received. Wait a minute and try again.",
@@ -215,7 +216,7 @@ pub(super) const UPLOAD_SCRIPT: &str = r#"(() => {
     size_mismatch: "The file size changed during upload. Choose it again and retry.",
     store_failed: "The PC could not safely store this upload. Try a different destination folder.",
     temp_unavailable: "The PC could not create a temporary upload file.",
-    too_large: "This file is larger than the receive limit.",
+    too_large: "This file batch is larger than the receive limit.",
     upload_failed: "The upload did not complete.",
     write_failed: "The PC could not write the incoming file."
   };
@@ -232,8 +233,16 @@ pub(super) const UPLOAD_SCRIPT: &str = r#"(() => {
     return index === 0 ? `${bytes} B` : `${size.toFixed(1)} ${units[index]}`;
   }
 
-  function selectedFileTooLarge(file) {
-    return maxUploadBytes > 0 && file.size > maxUploadBytes;
+  function selectedFiles() {
+    return Array.from(input.files || []);
+  }
+
+  function totalSize(files) {
+    return files.reduce((total, file) => total + file.size, 0);
+  }
+
+  function selectedBatchTooLarge(files) {
+    return maxUploadBytes > 0 && totalSize(files) > maxUploadBytes;
   }
 
   async function readApiError(response, fallback) {
@@ -247,22 +256,22 @@ pub(super) const UPLOAD_SCRIPT: &str = r#"(() => {
 
   input.addEventListener("change", () => {
     if (active) return;
-    const file = input.files && input.files[0];
-    if (!file) {
+    const files = selectedFiles();
+    if (files.length === 0) {
       button.disabled = false;
       setStatus("Waiting for a file selection.");
       return;
     }
-    if (selectedFileTooLarge(file)) {
+    if (selectedBatchTooLarge(files)) {
       button.disabled = true;
-      setStatus(`This file is ${formatBytes(file.size)}, which exceeds the ${formatBytes(maxUploadBytes)} receive limit.`);
+      setStatus(`These files total ${formatBytes(totalSize(files))}, which exceeds the ${formatBytes(maxUploadBytes)} receive limit.`);
       return;
     }
     button.disabled = false;
-    setStatus(`Ready to request approval for ${file.name} (${formatBytes(file.size)}).`);
+    setStatus(`Ready to request approval for ${files.length} file${files.length === 1 ? "" : "s"} (${formatBytes(totalSize(files))}).`);
   });
 
-  async function pollForApproval(file) {
+  async function pollForApproval(files) {
     for (;;) {
       await wait(1000);
       const response = await fetch(`/api/upload-status/${encodeURIComponent(token)}`, { cache: "no-store" });
@@ -270,7 +279,7 @@ pub(super) const UPLOAD_SCRIPT: &str = r#"(() => {
         throw new Error(await readApiError(response, "The receive link is no longer available."));
       }
       const current = await response.json();
-      if (current.status.kind === "Approved") return upload(file);
+      if (current.status.kind === "Approved") return upload(files);
       if (current.status.kind === "Denied") {
         throw new Error(current.approval_timed_out ? errorMessages.approval_timed_out : errorMessages.denied);
       }
@@ -281,25 +290,25 @@ pub(super) const UPLOAD_SCRIPT: &str = r#"(() => {
     }
   }
 
-  async function upload(file) {
+  async function upload(files) {
     setStatus("Approved. Uploading to the PC...");
     const body = new FormData();
-    body.append("file", file, file.name);
+    for (const file of files) body.append("files", file, file.name);
     const response = await fetch(`/upload/${encodeURIComponent(token)}`, { method: "POST", body });
     if (!response.ok) {
       throw new Error(await readApiError(response, "Upload failed"));
     }
-    setStatus("Upload complete. The file is safely stored on the PC.");
+    setStatus("Upload complete. The complete batch is safely stored on the PC.");
     button.textContent = "Uploaded";
   }
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (active) return;
-    const file = input.files && input.files[0];
-    if (!file) return;
-    if (selectedFileTooLarge(file)) {
-      setStatus(`This file is ${formatBytes(file.size)}, which exceeds the ${formatBytes(maxUploadBytes)} receive limit.`);
+    const files = selectedFiles();
+    if (files.length === 0) return;
+    if (selectedBatchTooLarge(files)) {
+      setStatus(`These files total ${formatBytes(totalSize(files))}, which exceeds the ${formatBytes(maxUploadBytes)} receive limit.`);
       return;
     }
     active = true;
@@ -309,13 +318,17 @@ pub(super) const UPLOAD_SCRIPT: &str = r#"(() => {
       const response = await fetch(`/api/upload-request/${encodeURIComponent(token)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file_name: file.name, file_size: file.size, mime_type: file.type || null })
+        body: JSON.stringify({
+          files: files.map((file) => ({ file_name: file.name, size: file.size, mime_type: file.type || "application/octet-stream" })),
+          file_count: files.length,
+          total_size: totalSize(files)
+        })
       });
       if (!response.ok) {
         throw new Error(await readApiError(response, "The PC could not accept this upload request"));
       }
       setStatus("Waiting for approval on the PC...");
-      await pollForApproval(file);
+      await pollForApproval(files);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
       button.disabled = false;

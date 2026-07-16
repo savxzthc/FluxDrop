@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { NetworkAddress } from "../lib/api";
+import type { FirewallDiagnostic, NetworkAddress } from "../lib/api";
 import { copyTextToClipboard } from "../lib/clipboard";
 
 interface HelpStatus {
@@ -12,9 +12,12 @@ interface HelpCardProps {
   addresses: NetworkAddress[];
   serverAddress: string;
   status: HelpStatus | null;
+  firewall: FirewallDiagnostic | null;
+  firewallRepairing: boolean;
+  onRepairFirewall: () => Promise<void>;
 }
 
-export function HelpCard({ addresses, serverAddress, status }: HelpCardProps) {
+export function HelpCard({ addresses, serverAddress, status, firewall, firewallRepairing, onRepairFirewall }: HelpCardProps) {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
 
   async function copyNetworkDetails() {
@@ -30,6 +33,12 @@ export function HelpCard({ addresses, serverAddress, status }: HelpCardProps) {
         <div className="help-content">
           <p>Both devices must be on the same Wi-Fi network. Guest networks, VPNs, and client isolation can block phones from reaching this PC.</p>
           <p>If the phone cannot open the QR link, allow FluxDrop through Windows Defender Firewall for private networks and temporarily disconnect VPN software.</p>
+          <p><strong>Firewall:</strong> {firewall?.message ?? "Checking Windows Firewall policy."}</p>
+          {firewall?.repair_available && firewall.state !== "public_network" ? (
+            <button className="subtle-button compact-button" type="button" onClick={() => void onRepairFirewall()} disabled={firewallRepairing}>
+              {firewallRepairing ? "Waiting for UAC..." : "Repair private firewall rule"}
+            </button>
+          ) : null}
           <dl className="status-grid">
             <div>
               <dt>Detected server</dt>

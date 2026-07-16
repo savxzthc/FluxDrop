@@ -6,7 +6,24 @@ use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 fn main() {
+    if std::env::args().any(|argument| argument == "--repair-firewall") {
+        std::process::exit(match fluxdrop_lib::firewall::repair_current_executable() {
+            Ok(()) => 0,
+            Err(err) => {
+                eprintln!("{err}");
+                1
+            }
+        });
+    }
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_updater::Builder::new()
+                .pubkey(
+                    option_env!("TAURI_SIGNING_PUBLIC_KEY")
+                        .unwrap_or("DEVELOPMENT_BUILDS_DO_NOT_INSTALL_UPDATES"),
+                )
+                .build(),
+        )
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             let paths = shell_integration::extract_send_paths(&args);
             if let Some(state) = app.try_state::<AppState>() {
@@ -55,7 +72,12 @@ fn main() {
             fluxdrop_lib::commands::repeat_transfer,
             fluxdrop_lib::commands::approve_download,
             fluxdrop_lib::commands::deny_download,
-            fluxdrop_lib::commands::take_pending_shell_share
+            fluxdrop_lib::commands::take_pending_shell_share,
+            fluxdrop_lib::commands::diagnose_firewall,
+            fluxdrop_lib::commands::repair_firewall,
+            fluxdrop_lib::updates::check_for_update,
+            fluxdrop_lib::updates::install_update,
+            fluxdrop_lib::updates::open_update_download_page
         ])
         .setup(|app| {
             let config_dir = app.path().app_config_dir()?;
@@ -74,6 +96,7 @@ fn main() {
             let state =
                 AppState::with_storage(settings, Some(settings_path), history, Some(history_path));
             app.manage(state.clone());
+            app.manage(fluxdrop_lib::updates::PendingUpdateState::default());
 
             let startup_paths =
                 shell_integration::extract_send_paths(&std::env::args().collect::<Vec<_>>());

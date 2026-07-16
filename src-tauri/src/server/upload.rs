@@ -51,25 +51,64 @@ pub(super) async fn upload_request(
         Ok(snapshot) => snapshot,
         Err(reason) => return api_error_response(reason),
     };
-    if metadata.file_name.trim().is_empty() {
+    if metadata.files.is_empty()
+        || metadata.file_count != metadata.files.len()
+        || metadata.file_count > 1_000
+        || metadata
+            .files
+            .iter()
+            .any(|file| file.file_name.trim().is_empty())
+    {
         return (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "missing_filename"})),
+            Json(serde_json::json!({"error": "invalid_manifest"})),
         )
             .into_response();
     }
-    if metadata.file_size > snapshot.max_upload_bytes {
+    let computed_total = match metadata
+        .files
+        .iter()
+        .try_fold(0_u64, |total, file| total.checked_add(file.size))
+    {
+        Some(total) => total,
+        None => {
+            return (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                Json(serde_json::json!({"error": "too_large"})),
+            )
+                .into_response()
+        }
+    };
+    if computed_total != metadata.total_size {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "invalid_manifest"})),
+        )
+            .into_response();
+    }
+    if computed_total > snapshot.max_upload_bytes {
         return (
             StatusCode::PAYLOAD_TOO_LARGE,
             Json(serde_json::json!({
                 "error": "too_large",
-                "message": format!("The selected file exceeds the {} limit.", format_file_size(snapshot.max_upload_bytes))
+                "message": format!("The selected batch exceeds the {} limit.", format_file_size(snapshot.max_upload_bytes))
             })),
         )
             .into_response();
     }
 
-    let safe_name = sanitize_filename(&metadata.file_name);
+    let manifest = metadata
+        .files
+        .into_iter()
+        .map(|file| ReceiveFileManifest {
+            file_name: sanitize_filename(&file.file_name),
+            mime_type: file
+                .mime_type
+                .map(|value| value.trim().chars().take(255).collect())
+                .filter(|value: &String| !value.is_empty()),
+            size: file.size,
+        })
+        .collect::<Vec<_>>();
     let (info, approval_requested) = {
         let mut guard = state.app_state.write().await;
         let local_address = guard
@@ -90,12 +129,11 @@ pub(super) async fn upload_request(
             )
                 .into_response();
         }
-        let approval_requested =
-            receive.request_approval(addr.ip(), safe_name, metadata.file_size, metadata.mime_type);
+        let approval_requested = receive.request_approval(addr.ip(), manifest);
         let message = if approval_requested {
-            "Phone requested approval to upload a file."
+            "Phone requested approval to upload a file batch."
         } else {
-            "Phone upload request accepted without approval."
+            "Phone upload batch accepted without approval."
         }
         .to_string();
         let info = receive.status_info(local_address, Some(message.clone()));
@@ -181,7 +219,8 @@ pub(super) async fn upload_file(
         Ok(snapshot) => snapshot,
         Err(reason) => return api_error_response(reason),
     };
-    let overhead_allowance = 1024 * 1024_u64;
+    let overhead_allowance =
+        (1024 * 1024_u64).saturating_add((snapshot.files.len() as u64).saturating_mul(4 * 1024));
     if headers
         .get(header::CONTENT_LENGTH)
         .and_then(|value| value.to_str().ok())
@@ -211,161 +250,190 @@ pub(super) async fn upload_file(
         }
     }
 
-    let field = loop {
-        match multipart.next_field().await {
-            Ok(Some(field)) if field.name() == Some("file") => break field,
-            Ok(Some(_)) => continue,
-            Ok(None) => {
-                set_upload_error(&state, "The phone did not include a file.").await;
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"error": "missing_file"})),
-                )
-                    .into_response();
-            }
-            Err(_) => {
-                set_upload_error(&state, "FluxDrop could not parse the upload body.").await;
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"error": "invalid_multipart"})),
-                )
-                    .into_response();
-            }
-        }
-    };
-
-    let upload_name = sanitize_filename(field.file_name().unwrap_or("upload"));
-    if snapshot.file_name.as_deref() != Some(upload_name.as_str()) {
-        set_upload_error(
-            &state,
-            "The uploaded filename did not match the approved request.",
-        )
-        .await;
-        return (
-            StatusCode::CONFLICT,
-            Json(serde_json::json!({"error": "metadata_mismatch"})),
-        )
-            .into_response();
-    }
-    let final_path = unique_destination_path(&snapshot.destination_folder, &upload_name).await;
-    // Keep incomplete writes in a randomized same-directory .part file, then
-    // publish with no-clobber only after the approved body is fully validated.
-    let named_temp = match tempfile::Builder::new()
-        .prefix(".fluxdrop-upload-")
-        .suffix(".part")
-        .tempfile_in(&snapshot.destination_folder)
-    {
-        Ok(file) => file,
-        Err(_) => {
-            set_upload_error(&state, "FluxDrop could not create a temporary upload file.").await;
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": "temp_unavailable"})),
-            )
-                .into_response();
-        }
-    };
-    let (std_file, temp_path) = named_temp.into_parts();
-    let mut output = tokio::fs::File::from_std(std_file);
-    let mut field = field;
+    let mut temporary_files = Vec::with_capacity(snapshot.files.len());
     let mut received = 0_u64;
     let mut last_emit = Instant::now() - Duration::from_millis(250);
-
-    loop {
-        let chunk = match field.chunk().await {
-            Ok(Some(chunk)) => chunk,
-            Ok(None) => break,
-            Err(_) => {
-                drop(output);
-                drop(temp_path);
-                set_upload_error(&state, "The phone upload was interrupted.").await;
-                return (
+    for expected in &snapshot.files {
+        let mut field = match multipart.next_field().await {
+            Ok(Some(field)) => field,
+            Ok(None) => {
+                return upload_failure(
+                    &state,
                     StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"error": "interrupted"})),
+                    "missing_file",
+                    "The phone did not include every approved file.",
+                )
+                .await
+            }
+            Err(_) => {
+                return upload_failure(
+                    &state,
+                    StatusCode::BAD_REQUEST,
+                    "invalid_multipart",
+                    "FluxDrop could not parse the upload body.",
+                )
+                .await
+            }
+        };
+        let upload_name = sanitize_filename(field.file_name().unwrap_or("upload"));
+        let upload_mime = field.content_type().map(ToOwned::to_owned);
+        if field.name() != Some("files")
+            || upload_name != expected.file_name
+            || upload_mime.as_deref() != expected.mime_type.as_deref()
+        {
+            return upload_failure(
+                &state,
+                StatusCode::CONFLICT,
+                "metadata_mismatch",
+                "An uploaded file did not match the approved batch manifest.",
+            )
+            .await;
+        }
+        let named_temp = match tempfile::Builder::new()
+            .prefix(".fluxdrop-upload-")
+            .suffix(".part")
+            .tempfile_in(&snapshot.destination_folder)
+        {
+            Ok(file) => file,
+            Err(_) => {
+                return upload_failure(
+                    &state,
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "temp_unavailable",
+                    "FluxDrop could not create a temporary upload file.",
+                )
+                .await
+            }
+        };
+        let (std_file, temp_path) = named_temp.into_parts();
+        let mut output = tokio::fs::File::from_std(std_file);
+        let mut file_received = 0_u64;
+        loop {
+            let chunk = match field.chunk().await {
+                Ok(Some(chunk)) => chunk,
+                Ok(None) => break,
+                Err(_) => {
+                    return upload_failure(
+                        &state,
+                        StatusCode::BAD_REQUEST,
+                        "interrupted",
+                        "The phone upload was interrupted.",
+                    )
+                    .await
+                }
+            };
+            if !receive_upload_active(&state.app_state, &token).await {
+                return (
+                    StatusCode::GONE,
+                    Json(serde_json::json!({"error": "cancelled"})),
                 )
                     .into_response();
             }
-        };
-        received = received.saturating_add(chunk.len() as u64);
-        if received > snapshot.max_upload_bytes {
-            drop(output);
-            drop(temp_path);
-            set_upload_error(
+            file_received = file_received.saturating_add(chunk.len() as u64);
+            received = received.saturating_add(chunk.len() as u64);
+            if file_received > expected.size || received > snapshot.max_upload_bytes {
+                return upload_failure(
+                    &state,
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "size_mismatch",
+                    "An uploaded file exceeded its approved size.",
+                )
+                .await;
+            }
+            if output.write_all(&chunk).await.is_err() {
+                return upload_failure(
+                    &state,
+                    StatusCode::INSUFFICIENT_STORAGE,
+                    "write_failed",
+                    "FluxDrop could not write an incoming file.",
+                )
+                .await;
+            }
+            if last_emit.elapsed() >= Duration::from_millis(150) {
+                emit_upload_progress(&state, received).await;
+                last_emit = Instant::now();
+            }
+        }
+        if file_received != expected.size {
+            return upload_failure(
                 &state,
-                "The phone upload exceeded the configured size limit.",
+                StatusCode::BAD_REQUEST,
+                "size_mismatch",
+                "An uploaded file size did not match the approved batch manifest.",
             )
             .await;
-            return (
-                StatusCode::PAYLOAD_TOO_LARGE,
-                Json(serde_json::json!({"error": "too_large"})),
-            )
-                .into_response();
         }
-        if output.write_all(&chunk).await.is_err() {
-            drop(output);
-            drop(temp_path);
-            set_upload_error(&state, "FluxDrop could not write the incoming file.").await;
-            return (
+        if output.flush().await.is_err() || output.sync_all().await.is_err() {
+            return upload_failure(
+                &state,
                 StatusCode::INSUFFICIENT_STORAGE,
-                Json(serde_json::json!({"error": "write_failed"})),
+                "write_failed",
+                "FluxDrop could not finish writing an incoming file.",
             )
-                .into_response();
+            .await;
         }
-        if last_emit.elapsed() >= Duration::from_millis(150) {
-            emit_upload_progress(&state, received).await;
-            last_emit = Instant::now();
+        drop(output);
+        temporary_files.push(temp_path);
+    }
+    match multipart.next_field().await {
+        Ok(None) => {}
+        Ok(Some(_)) => {
+            return upload_failure(
+                &state,
+                StatusCode::CONFLICT,
+                "metadata_mismatch",
+                "The upload included a file that was not in the approved batch.",
+            )
+            .await
         }
+        Err(_) => {
+            return upload_failure(
+                &state,
+                StatusCode::BAD_REQUEST,
+                "invalid_multipart",
+                "FluxDrop could not finish parsing the upload body.",
+            )
+            .await
+        }
+    }
+    if snapshot.total_size != Some(received) {
+        return upload_failure(
+            &state,
+            StatusCode::BAD_REQUEST,
+            "size_mismatch",
+            "The uploaded batch size did not match the approved manifest.",
+        )
+        .await;
     }
 
-    if snapshot.declared_size != Some(received) {
-        drop(output);
-        drop(temp_path);
-        set_upload_error(
-            &state,
-            "The uploaded size did not match the approved request.",
-        )
-        .await;
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "size_mismatch"})),
-        )
-            .into_response();
-    }
-    if output.flush().await.is_err() {
-        drop(output);
-        drop(temp_path);
-        set_upload_error(
-            &state,
-            "FluxDrop could not finish writing the incoming file.",
-        )
-        .await;
-        return (
-            StatusCode::INSUFFICIENT_STORAGE,
-            Json(serde_json::json!({"error": "write_failed"})),
-        )
-            .into_response();
-    }
-    drop(output);
-    let persist_result =
-        tokio::task::spawn_blocking(move || temp_path.persist_noclobber(&final_path)).await;
-    if !matches!(persist_result, Ok(Ok(_))) {
-        set_upload_error(
-            &state,
-            "FluxDrop could not safely move the upload into the destination folder.",
-        )
-        .await;
-        return (
-            StatusCode::CONFLICT,
-            Json(serde_json::json!({"error": "store_failed"})),
-        )
-            .into_response();
+    let final_paths = unique_destination_paths(
+        &snapshot.destination_folder,
+        snapshot.files.iter().map(|file| file.file_name.as_str()),
+    )
+    .await;
+    let mut finalized = Vec::with_capacity(final_paths.len());
+    for (temp_path, final_path) in temporary_files.into_iter().zip(final_paths) {
+        let persist_path = final_path.clone();
+        let persisted =
+            tokio::task::spawn_blocking(move || temp_path.persist_noclobber(&persist_path)).await;
+        if !matches!(persisted, Ok(Ok(_))) {
+            rollback_finalized_files(&finalized).await;
+            return upload_failure(&state, StatusCode::CONFLICT, "store_failed", "FluxDrop could not publish the complete upload batch; newly published files were rolled back.").await;
+        }
+        finalized.push(final_path);
     }
 
     let info = mark_upload_completed(&state.app_state, &token, received).await;
     if let Some(info) = info {
         events::emit_share_status(state.app.as_ref(), "upload_completed", &info);
     }
-    Json(serde_json::json!({"status": "ok", "file_name": upload_name})).into_response()
+    Json(serde_json::json!({
+        "status": "ok",
+        "file_count": snapshot.files.len(),
+        "total_size": received,
+        "file_names": snapshot.files.iter().map(|file| &file.file_name).collect::<Vec<_>>()
+    }))
+    .into_response()
 }
 
 async fn validate_receive_token(
@@ -426,9 +494,29 @@ fn receive_snapshot(receive: &ReceiveSession) -> ReceiveSnapshot {
         token: receive.token.clone(),
         destination_folder: receive.destination_folder.clone(),
         max_upload_bytes: receive.max_upload_bytes,
-        file_name: receive.file_name.clone(),
-        declared_size: receive.declared_size,
+        files: receive.files.clone(),
+        total_size: receive.total_size,
     }
+}
+
+async fn upload_failure(
+    state: &HttpState,
+    status: StatusCode,
+    code: &str,
+    message: &str,
+) -> Response {
+    set_upload_error(state, message).await;
+    (status, Json(serde_json::json!({"error": code}))).into_response()
+}
+
+async fn receive_upload_active(app_state: &AppState, token: &str) -> bool {
+    let guard = app_state.read().await;
+    guard.receive_session.as_ref().is_some_and(|receive| {
+        receive.token == token
+            && !receive.cancelled
+            && !receive.is_expired()
+            && matches!(receive.status, ShareStatus::Uploading)
+    })
 }
 
 fn spawn_upload_approval_timeout(state: HttpState, token: String) {
@@ -586,26 +674,45 @@ fn upload_error_page_response(reason: InvalidReason) -> Response {
     (status, Html(error_html(title, message))).into_response()
 }
 
-async fn unique_destination_path(folder: &std::path::Path, file_name: &str) -> std::path::PathBuf {
-    let initial = folder.join(file_name);
-    if !tokio::fs::try_exists(&initial).await.unwrap_or(true) {
-        return initial;
-    }
-    let path = std::path::Path::new(file_name);
-    let stem = path
-        .file_stem()
-        .and_then(|value| value.to_str())
-        .unwrap_or("upload");
-    let extension = path.extension().and_then(|value| value.to_str());
-    for index in 2.. {
-        let candidate_name = match extension {
-            Some(extension) => format!("{stem} ({index}).{extension}"),
-            None => format!("{stem} ({index})"),
-        };
-        let candidate = folder.join(candidate_name);
-        if !tokio::fs::try_exists(&candidate).await.unwrap_or(true) {
-            return candidate;
+async fn unique_destination_paths<'a>(
+    folder: &std::path::Path,
+    file_names: impl Iterator<Item = &'a str>,
+) -> Vec<std::path::PathBuf> {
+    let mut reserved = std::collections::HashSet::new();
+    let mut result = Vec::new();
+    for file_name in file_names {
+        let path = std::path::Path::new(file_name);
+        let stem = path
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or("upload");
+        let extension = path.extension().and_then(|value| value.to_str());
+        let mut index = 1_u64;
+        loop {
+            let candidate_name = if index == 1 {
+                file_name.to_string()
+            } else {
+                match extension {
+                    Some(extension) => format!("{stem} ({index}).{extension}"),
+                    None => format!("{stem} ({index})"),
+                }
+            };
+            let candidate = folder.join(candidate_name);
+            if !reserved.contains(&candidate)
+                && !tokio::fs::try_exists(&candidate).await.unwrap_or(true)
+            {
+                reserved.insert(candidate.clone());
+                result.push(candidate);
+                break;
+            }
+            index = index.saturating_add(1);
         }
     }
-    unreachable!()
+    result
+}
+
+pub(super) async fn rollback_finalized_files(paths: &[std::path::PathBuf]) {
+    for path in paths.iter().rev() {
+        let _ = tokio::fs::remove_file(path).await;
+    }
 }

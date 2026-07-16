@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-16
+
+### Added
+
+- Resumable ordinary-file downloads with standards-compliant single-range responses and unique-byte completion tracking.
+- Atomic multi-file phone uploads approved as one sanitized manifest with aggregate limits, collision-safe publication, and rollback.
+- Structured Windows Firewall diagnosis plus an explicit UAC-elevated repair for a private-profile, local-subnet application rule.
+- Signed installed-build updates with background verification, active-transfer deferral, restart confirmation, and portable-build release reporting.
+
+### Changed
+
+- Receive history records now store aggregate batch size and file count.
+- Release automation now publishes signed updater bundles, signatures, `latest.json`, installers, portable builds, and checksums.
+- Automatic updates are enabled by default and can be disabled in Settings.
+
 ## [0.3.0] - 2026-07-03
 
 ### Added

@@ -1,6 +1,6 @@
 [package]
 name = "fluxdrop"
-version = "0.3.0"
+version = "0.4.0"
 description = "Send files from your PC to your phone with one QR scan."
 authors = ["FluxDrop Contributors"]
 license = "MIT"
@@ -50,6 +50,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 walkdir = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-global-shortcut = "2"
+tauri-plugin-updater = "2"
 
 [dev-dependencies]
 http-body-util = "0.1"
@@ -59,4 +60,5 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [target."cfg(windows)".dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Threading"] }
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_NetworkManagement_WindowsFirewall", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 winreg = "0.56.0"

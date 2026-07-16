@@ -28,6 +28,7 @@ pub struct AppSettings {
     pub shell_integration: bool,
     pub global_hotkey: bool,
     pub remember_transfer_locations: bool,
+    pub automatic_updates: bool,
 }
 
 impl Default for AppSettings {
@@ -42,6 +43,7 @@ impl Default for AppSettings {
             shell_integration: false,
             global_hotkey: false,
             remember_transfer_locations: true,
+            automatic_updates: true,
         }
     }
 }
@@ -120,6 +122,7 @@ mod tests {
         assert_eq!(settings.max_upload_bytes, 2 * 1024 * 1024 * 1024);
         assert_eq!(settings.theme, ThemePreference::System);
         assert!(settings.remember_transfer_locations);
+        assert!(settings.automatic_updates);
     }
 
     #[test]

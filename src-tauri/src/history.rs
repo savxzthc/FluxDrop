@@ -103,14 +103,18 @@ impl HistoryRecord {
         Some(Self {
             id: receive.id,
             direction: TransferDirection::Receive,
-            file_name: receive
-                .file_name
-                .clone()
-                .unwrap_or_else(|| format!("Receive to {destination_name}")),
-            file_size: receive.declared_size,
-            file_count: usize::from(receive.file_name.is_some()),
+            file_name: match receive.files.as_slice() {
+                [] => format!("Receive to {destination_name}"),
+                [file] => file.file_name.clone(),
+                files => format!("{} files", files.len()),
+            },
+            file_size: receive.total_size,
+            file_count: receive.file_count,
             is_archive: false,
-            mime_type: receive.mime_type.clone(),
+            mime_type: match receive.files.as_slice() {
+                [file] => file.mime_type.clone(),
+                _ => None,
+            },
             created_at: receive.created_at,
             finished_at: Utc::now(),
             client_ip: receive.client_ip.map(|ip| ip.to_string()),

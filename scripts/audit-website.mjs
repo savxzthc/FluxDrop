@@ -7,6 +7,7 @@ const websiteRoot = path.join(repositoryRoot, "website");
 const outputRoot = path.join(repositoryRoot, "site-dist");
 const sourceHtmlPaths = [
   path.join(websiteRoot, "index.html"),
+  path.join(websiteRoot, "404.html"),
   path.join(websiteRoot, "security.html"),
   path.join(websiteRoot, "support.html"),
   path.join(repositoryRoot, "fluxdrop-website.html")
@@ -29,6 +30,7 @@ const requiredHeaderNames = [
   "X-Frame-Options",
   "X-Permitted-Cross-Domain-Policies"
 ];
+const requiredHstsValue = "max-age=31536000; includeSubDomains; preload";
 
 const requiredCspDirectives = [
   "default-src 'none'",
@@ -42,11 +44,20 @@ const requiredCspDirectives = [
   "base-uri 'none'",
   "form-action 'none'",
   "frame-ancestors 'none'",
+  "upgrade-insecure-requests",
   "require-trusted-types-for 'script'",
   "trusted-types 'none'"
 ];
 
 const failures = [];
+const allowedHiddenPublishablePaths = new Set([".htaccess", "public/.htaccess"]);
+const disallowedArtifactPatterns = [
+  [/\.(?:zip|7z|rar|tar|tgz|tar\.gz)$/i, "archive file"],
+  [/\.(?:map|log|bak|backup|old|orig|tmp|temp|swp)$/i, "debug, backup, or temporary file"],
+  [/^\.env(?:\.|$)/i, "environment file"],
+  [/^(?:id_rsa|id_dsa|id_ecdsa|id_ed25519|known_hosts|authorized_keys)$/i, "SSH credential file"],
+  [/\.(?:pem|key|p12|pfx|crt|csr)$/i, "key or certificate file"]
+];
 
 function displayPath(filePath) {
   return path.relative(repositoryRoot, filePath).replaceAll("\\", "/");
@@ -58,6 +69,43 @@ function fail(filePath, message) {
 
 async function read(filePath) {
   return readFile(filePath, "utf8");
+}
+
+async function walkFiles(rootPath) {
+  const entries = await readdir(rootPath, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries) {
+    const filePath = path.join(rootPath, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await walkFiles(filePath)));
+      continue;
+    }
+    if (entry.isFile()) {
+      files.push(filePath);
+      continue;
+    }
+    fail(filePath, "special filesystem entries are forbidden in publishable web roots");
+  }
+
+  return files;
+}
+
+async function auditPublishableArtifacts(rootPath) {
+  for (const filePath of await walkFiles(rootPath)) {
+    const relativePath = path.relative(rootPath, filePath).replaceAll("\\", "/");
+    const fileName = path.basename(filePath);
+
+    if (fileName.startsWith(".") && !allowedHiddenPublishablePaths.has(relativePath)) {
+      fail(filePath, "hidden files are forbidden in publishable web roots");
+    }
+
+    for (const [pattern, label] of disallowedArtifactPatterns) {
+      if (pattern.test(fileName) || pattern.test(relativePath)) {
+        fail(filePath, `${label} is forbidden in publishable web roots`);
+      }
+    }
+  }
 }
 
 function auditHtml(filePath, html, { requireSitePolicy }) {
@@ -103,6 +151,9 @@ function auditHtml(filePath, html, { requireSitePolicy }) {
     }
     if (!/require-trusted-types-for 'script'/.test(html) || !/trusted-types 'none'/.test(html)) {
       fail(filePath, "meta CSP must enforce Trusted Types");
+    }
+    if (!/upgrade-insecure-requests/.test(html)) {
+      fail(filePath, "meta CSP must upgrade insecure requests");
     }
   }
 }
@@ -152,6 +203,7 @@ for (const filePath of sourceHtmlPaths) {
 for (const filePath of sourceScriptPaths) auditJavaScript(filePath, await read(filePath));
 for (const filePath of sourceStylePaths) auditCss(filePath, await read(filePath));
 for (const filePath of sourceSvgPaths) auditSvg(filePath, await read(filePath));
+await auditPublishableArtifacts(websiteRoot);
 
 const outputHtmlPaths = (await readdir(outputRoot))
   .filter((fileName) => fileName.endsWith(".html"))
@@ -168,22 +220,54 @@ for (const fileName of await readdir(outputAssetsRoot)) {
   if (fileName.endsWith(".css")) auditCss(filePath, await read(filePath));
   if (fileName.endsWith(".svg")) auditSvg(filePath, await read(filePath));
 }
+await auditPublishableArtifacts(outputRoot);
 
 const headersSourcePath = path.join(websiteRoot, "public", "_headers");
 const builtHeadersPath = path.join(outputRoot, "_headers");
+const htaccessSourcePath = path.join(websiteRoot, "public", ".htaccess");
+const builtHtaccessPath = path.join(outputRoot, ".htaccess");
 const vercelConfigPath = path.join(repositoryRoot, "vercel.json");
 const securityTextPath = path.join(outputRoot, ".well-known", "security.txt");
+const robotsTextPath = path.join(outputRoot, "robots.txt");
 const headersSource = await read(headersSourcePath);
 const builtHeaders = await read(builtHeadersPath);
+const htaccessSource = await read(htaccessSourcePath);
+const builtHtaccess = await read(builtHtaccessPath);
 const vercelConfig = JSON.parse(await read(vercelConfigPath));
 
 for (const headerName of requiredHeaderNames) {
   if (!headersSource.includes(`${headerName}:`)) fail(headersSourcePath, `missing ${headerName}`);
   if (!builtHeaders.includes(`${headerName}:`)) fail(builtHeadersPath, `missing ${headerName}`);
+  if (!htaccessSource.includes(`Header always set ${headerName}`)) fail(htaccessSourcePath, `missing ${headerName}`);
+  if (!builtHtaccess.includes(`Header always set ${headerName}`)) fail(builtHtaccessPath, `missing ${headerName}`);
 }
 
 for (const directive of requiredCspDirectives) {
   if (!headersSource.includes(directive)) fail(headersSourcePath, `CSP missing ${directive}`);
+  if (!htaccessSource.includes(directive)) fail(htaccessSourcePath, `CSP missing ${directive}`);
+}
+
+if (!headersSource.includes(`Strict-Transport-Security: ${requiredHstsValue}`)) {
+  fail(headersSourcePath, "HSTS missing preload-ready policy");
+}
+if (!builtHeaders.includes(`Strict-Transport-Security: ${requiredHstsValue}`)) {
+  fail(builtHeadersPath, "HSTS missing preload-ready policy");
+}
+if (!htaccessSource.includes(`Header always set Strict-Transport-Security "${requiredHstsValue}"`)) {
+  fail(htaccessSourcePath, "HSTS missing preload-ready policy");
+}
+if (!builtHtaccess.includes(`Header always set Strict-Transport-Security "${requiredHstsValue}"`)) {
+  fail(builtHtaccessPath, "HSTS missing preload-ready policy");
+}
+for (const directive of [
+  "Options -Indexes",
+  "ErrorDocument 404 /404.html",
+  "RewriteCond %{HTTPS} !=on",
+  "RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L,NE]",
+  "Header always unset X-Powered-By"
+]) {
+  if (!htaccessSource.includes(directive)) fail(htaccessSourcePath, `missing ${directive}`);
+  if (!builtHtaccess.includes(directive)) fail(builtHtaccessPath, `missing ${directive}`);
 }
 
 const vercelHeaders = new Map(
@@ -191,6 +275,9 @@ const vercelHeaders = new Map(
 );
 for (const headerName of requiredHeaderNames) {
   if (!vercelHeaders.has(headerName)) fail(vercelConfigPath, `missing ${headerName}`);
+}
+if (vercelHeaders.get("Strict-Transport-Security") !== requiredHstsValue) {
+  fail(vercelConfigPath, "HSTS missing preload-ready policy");
 }
 for (const directive of requiredCspDirectives) {
   if (!vercelHeaders.get("Content-Security-Policy")?.includes(directive)) {
@@ -205,6 +292,9 @@ if (!/^Contact: https:\/\/github\.com\/savxzthc\/FluxDrop\/security\/advisories\
 if (!/^Expires: \d{4}-\d{2}-\d{2}T/m.test(securityText)) {
   fail(securityTextPath, "missing expiration date");
 }
+if (!/^User-agent: \*$/m.test(await read(robotsTextPath))) {
+  fail(robotsTextPath, "missing default robots policy");
+}
 
 if (failures.length > 0) {
   console.error(`Website security audit failed with ${failures.length} finding(s):`);
@@ -213,5 +303,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Website security audit passed: ${sourceHtmlPaths.length} source pages, ${outputHtmlPaths.length} built pages, no HTML comments, no executable inline code, no external runtime assets, and hardened deployment policies present.`
+  `Website security audit passed: ${sourceHtmlPaths.length} source pages, ${outputHtmlPaths.length} built pages, no HTML comments, no executable inline code, no external runtime assets, no publishable archive/secret/debug artifacts, and hardened Netlify, Vercel, and Apache deployment policies present.`
 );

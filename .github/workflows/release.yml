@@ -33,9 +33,19 @@ jobs:
         run: npm run release:check -- ${{ github.ref_name }}
 
       - name: Build installers and portable executable
+        env:
+          FLUXDROP_BUILD_FLAVOR: installed
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PUBLIC_KEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
         run: |
           npm run tauri build -- --bundles nsis,msi
-          npm run tauri build -- --no-bundle
+
+      - name: Build portable executable
+        env:
+          FLUXDROP_BUILD_FLAVOR: portable
+          TAURI_SIGNING_PUBLIC_KEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
+        run: npm run tauri build -- --no-bundle
 
       - name: Prepare release assets
         shell: pwsh
@@ -47,6 +57,28 @@ jobs:
           Copy-Item "src-tauri/target/release/bundle/nsis/FluxDrop_${version}_x64-setup.exe" $assets
           Copy-Item "src-tauri/target/release/bundle/msi/FluxDrop_${version}_x64_en-US.msi" $assets
           Copy-Item "src-tauri/target/release/fluxdrop.exe" "$assets/FluxDrop_${version}_x64-portable.exe"
+
+          $updater = Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter "*.nsis.zip" | Select-Object -First 1
+          if (-not $updater) { throw "The signed NSIS updater bundle was not generated." }
+          $signaturePath = "$($updater.FullName).sig"
+          if (-not (Test-Path $signaturePath)) { throw "The updater signature was not generated." }
+          Copy-Item $updater.FullName $assets
+          Copy-Item $signaturePath $assets
+          $updaterName = $updater.Name
+          $signature = (Get-Content -Raw $signaturePath).Trim()
+          $manifest = [ordered]@{
+            version = $version
+            notes = "FluxDrop ${{ github.ref_name }} reliability release"
+            pub_date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            platforms = [ordered]@{
+              "windows-x86_64" = [ordered]@{
+                signature = $signature
+                url = "https://github.com/savxzthc/FluxDrop/releases/download/${{ github.ref_name }}/$updaterName"
+              }
+            }
+          }
+          $manifest | ConvertTo-Json -Depth 6 | Set-Content "$assets/latest.json" -Encoding utf8
+          npm run updater:validate -- "$assets/latest.json"
 
           Get-ChildItem $assets -File |
             Sort-Object Name |
@@ -62,7 +94,7 @@ jobs:
 
           The portable executable requires the Microsoft Edge WebView2 Runtime included with supported Windows 10 and 11 installations.
 
-          These binaries are unsigned, so Windows SmartScreen may ask for confirmation. Verify downloads against ``SHA256SUMS.txt``.
+          Application installers are update-signed, but they are not Authenticode-signed. Windows SmartScreen may still ask for confirmation. Verify downloads against ``SHA256SUMS.txt``.
           "@ | Set-Content "release-notes.md" -Encoding utf8
 
       - name: Publish GitHub release
@@ -78,4 +110,7 @@ jobs:
             "release-assets/FluxDrop_${version}_x64-setup.exe" `
             "release-assets/FluxDrop_${version}_x64_en-US.msi" `
             "release-assets/FluxDrop_${version}_x64-portable.exe" `
-            "release-assets/SHA256SUMS.txt"
+            "release-assets/SHA256SUMS.txt" `
+            "release-assets/latest.json" `
+            "release-assets/*.nsis.zip" `
+            "release-assets/*.nsis.zip.sig"
