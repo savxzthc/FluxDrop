@@ -23,7 +23,7 @@ tauri-build = { version = "2", features = [] }
 async-stream = "0.3"
 async_zip = { version = "0.0.18", features = ["tokio"] }
 axum-server = { version = "0.8", features = ["tls-rustls"] }
-axum = { version = "0.7", features = ["multipart"] }
+axum = { version = "0.8", features = ["multipart"] }
 base64 = "0.22"
 bytes = "1"
 chrono = { version = "0.4", features = ["serde"] }
