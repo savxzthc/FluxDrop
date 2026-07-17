@@ -32,6 +32,24 @@ jobs:
       - name: Verify release version
         run: npm run release:check -- ${{ github.ref_name }}
 
+      - name: Configure updater public key
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PUBLIC_KEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PUBLIC_KEY)) {
+            throw "TAURI_SIGNING_PUBLIC_KEY is not configured."
+          }
+          @{
+            plugins = @{
+              updater = @{
+                pubkey = $env:TAURI_SIGNING_PUBLIC_KEY
+              }
+            }
+          } |
+            ConvertTo-Json -Depth 4 |
+            Set-Content "src-tauri/tauri.release.conf.json" -Encoding utf8
+
       - name: Build installers and portable executable
         env:
           FLUXDROP_BUILD_FLAVOR: installed
@@ -39,13 +57,13 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           TAURI_SIGNING_PUBLIC_KEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
         run: |
-          npm run tauri build -- --bundles nsis,msi
+          npm run tauri build -- --bundles nsis,msi --config src-tauri/tauri.release.conf.json
 
       - name: Build portable executable
         env:
           FLUXDROP_BUILD_FLAVOR: portable
           TAURI_SIGNING_PUBLIC_KEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
-        run: npm run tauri build -- --no-bundle
+        run: npm run tauri build -- --no-bundle --config src-tauri/tauri.release.conf.json
 
       - name: Prepare release assets
         shell: pwsh
