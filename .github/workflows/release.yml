@@ -72,18 +72,19 @@ jobs:
           $assets = "release-assets"
           New-Item -ItemType Directory -Path $assets -Force | Out-Null
 
-          Copy-Item "src-tauri/target/release/bundle/nsis/FluxDrop_${version}_x64-setup.exe" $assets
-          Copy-Item "src-tauri/target/release/bundle/msi/FluxDrop_${version}_x64_en-US.msi" $assets
+          $nsis = Get-Item "src-tauri/target/release/bundle/nsis/FluxDrop_${version}_x64-setup.exe"
+          $msi = Get-Item "src-tauri/target/release/bundle/msi/FluxDrop_${version}_x64_en-US.msi"
+          Copy-Item $nsis.FullName $assets
+          Copy-Item $msi.FullName $assets
           Copy-Item "src-tauri/target/release/fluxdrop.exe" "$assets/FluxDrop_${version}_x64-portable.exe"
 
-          $updater = Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter "*.nsis.zip" | Select-Object -First 1
-          if (-not $updater) { throw "The signed NSIS updater bundle was not generated." }
-          $signaturePath = "$($updater.FullName).sig"
-          if (-not (Test-Path $signaturePath)) { throw "The updater signature was not generated." }
-          Copy-Item $updater.FullName $assets
-          Copy-Item $signaturePath $assets
-          $updaterName = $updater.Name
-          $signature = (Get-Content -Raw $signaturePath).Trim()
+          $nsisSignaturePath = "$($nsis.FullName).sig"
+          $msiSignaturePath = "$($msi.FullName).sig"
+          if (-not (Test-Path $nsisSignaturePath)) { throw "The NSIS updater signature was not generated." }
+          if (-not (Test-Path $msiSignaturePath)) { throw "The MSI updater signature was not generated." }
+          Copy-Item $nsisSignaturePath $assets
+          Copy-Item $msiSignaturePath $assets
+          $signature = (Get-Content -Raw $nsisSignaturePath).Trim()
           $manifest = [ordered]@{
             version = $version
             notes = "FluxDrop ${{ github.ref_name }} reliability release"
@@ -91,7 +92,7 @@ jobs:
             platforms = [ordered]@{
               "windows-x86_64" = [ordered]@{
                 signature = $signature
-                url = "https://github.com/savxzthc/FluxDrop/releases/download/${{ github.ref_name }}/$updaterName"
+                url = "https://github.com/savxzthc/FluxDrop/releases/download/${{ github.ref_name }}/$($nsis.Name)"
               }
             }
           }
@@ -128,7 +129,7 @@ jobs:
             "release-assets/FluxDrop_${version}_x64-setup.exe" `
             "release-assets/FluxDrop_${version}_x64_en-US.msi" `
             "release-assets/FluxDrop_${version}_x64-portable.exe" `
+            "release-assets/FluxDrop_${version}_x64-setup.exe.sig" `
+            "release-assets/FluxDrop_${version}_x64_en-US.msi.sig" `
             "release-assets/SHA256SUMS.txt" `
-            "release-assets/latest.json" `
-            "release-assets/*.nsis.zip" `
-            "release-assets/*.nsis.zip.sig"
+            "release-assets/latest.json"

@@ -10,7 +10,7 @@ const manifest = path === "--self-test"
       platforms: {
         "windows-x86_64": {
           signature: "trusted-comment:test-signature-placeholder",
-          url: "https://github.com/savxzthc/FluxDrop/releases/download/v0.4.0/FluxDrop_0.4.0_x64-setup.nsis.zip"
+          url: "https://github.com/savxzthc/FluxDrop/releases/download/v0.4.0/FluxDrop_0.4.0_x64-setup.exe"
         }
       }
     }

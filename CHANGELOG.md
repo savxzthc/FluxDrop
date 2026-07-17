@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Receive history records now store aggregate batch size and file count.
-- Release automation now publishes signed updater bundles, signatures, `latest.json`, installers, portable builds, and checksums.
+- Release automation now publishes signed installer updater artifacts, `latest.json`, installers, portable builds, and checksums.
 - Automatic updates are enabled by default and can be disabled in Settings.
 
 ## [0.3.0] - 2026-07-03

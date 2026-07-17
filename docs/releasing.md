@@ -5,7 +5,7 @@ FluxDrop publishes Windows binaries from GitHub Actions. A version tag creates a
 - an NSIS setup executable for normal installation;
 - an MSI package for managed deployment;
 - a portable executable that runs without installation;
-- a signed updater bundle, signature, and `latest.json` for installed builds;
+- signed NSIS/MSI updater artifacts and `latest.json` for installed builds;
 - a SHA-256 checksum file for all published binaries.
 
 ## Prepare a release
@@ -45,4 +45,4 @@ The current pipeline produces unsigned installers. They work normally, but Windo
 
 Release jobs require protected `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, and matching `TAURI_SIGNING_PUBLIC_KEY` secrets. The installed build is compiled with `FLUXDROP_BUILD_FLAVOR=installed`; the separately compiled portable executable uses `FLUXDROP_BUILD_FLAVOR=portable` and never self-installs.
 
-The release workflow publishes NSIS, MSI, portable, updater ZIP, updater signature, `latest.json`, and `SHA256SUMS.txt`. Run `npm run release:check -- vX.Y.Z` before tagging. Updater signatures authenticate Tauri update artifacts but do not Authenticode-sign the Windows executables or suppress SmartScreen.
+The release workflow publishes NSIS, MSI, portable, installer updater signatures, `latest.json`, and `SHA256SUMS.txt`. Run `npm run release:check -- vX.Y.Z` before tagging. Updater signatures authenticate Tauri update artifacts but do not Authenticode-sign the Windows executables or suppress SmartScreen.
