@@ -76,6 +76,7 @@
             <a href="#certificate">Certificate prompt</a>
             <a href="#connection">Connection problems</a>
             <a href="#firewall">Windows Firewall</a>
+            <a href="#updates">Signed updates</a>
             <a href="#still-stuck">Still stuck?</a>
           </aside>
           <div class="support-content">
@@ -110,8 +111,8 @@
               <div class="check-grid">
                 <article><span>01</span><h3>Expiration</h3><p>Pick 5, 10, 30, or 60 minutes. QR cards now show a live expiry meter.</p></article>
                 <article><span>02</span><h3>Approval</h3><p>Keep PC approval on for normal use. If you turn it off for a trusted moment, the start screen calls that out.</p></article>
-                <article><span>03</span><h3>Single-use downloads</h3><p>Send links can expire after the first completed download, or stay reusable until the selected expiration.</p></article>
-                <article><span>04</span><h3>Receive upload limits</h3><p>Receive links can allow up to 16 GB, with warnings above the 2 GB secure default.</p></article>
+                <article><span>03</span><h3>Single-use downloads</h3><p>Send links close only after the full file has been served. Interrupted range downloads can resume until the link expires or you cancel it.</p></article>
+                <article><span>04</span><h3>Receive upload limits</h3><p>The configured limit applies to the aggregate size of the approved batch, up to 16 GB, with warnings above the 2 GB secure default.</p></article>
               </div>
             </section>
 
@@ -121,8 +122,8 @@
               <div class="callout">
                 <strong>History never stores transfer tokens, URLs, certificates, or file contents.</strong>
                 <p>
-                  v0.3.0 adds private history mode and a scrub action for saved local source or destination
-                  paths. Metadata can stay available even after repeat shortcuts are disabled.
+                  Private history mode and the scrub action remove saved local source or destination
+                  paths while keeping useful transfer metadata available.
                 </p>
               </div>
               <ol class="plain-steps">
@@ -163,14 +164,34 @@
 
             <section id="firewall" data-reveal>
               <span class="section-label">Windows Firewall</span>
-              <h2>Allow FluxDrop on private networks.</h2>
+              <h2>Diagnose the rule before changing Windows.</h2>
+              <div class="callout">
+                <strong>FluxDrop checks the current executable path, rule profile, network profile, and firewall service.</strong>
+                <p>
+                  If the private-network application rule is missing, stale, or misconfigured, choose
+                  <strong>Repair private firewall rule</strong> and approve the Windows UAC prompt.
+                  FluxDrop never enables Public-profile access or changes the network profile.
+                </p>
+              </div>
+              <p>If automatic repair is unavailable, use the manual fallback:</p>
               <ol class="plain-steps">
                 <li>Open <strong>Windows Security</strong>.</li>
                 <li>Select <strong>Firewall &amp; network protection</strong>.</li>
                 <li>Choose <strong>Allow an app through firewall</strong>.</li>
                 <li>Allow FluxDrop for <strong>Private</strong> networks.</li>
-                <li>Leave <strong>Public</strong> unchecked unless you understand the additional exposure.</li>
+                <li>Leave <strong>Public</strong> unchecked.</li>
               </ol>
+            </section>
+
+            <section id="updates" data-reveal>
+              <span class="section-label">Signed updates</span>
+              <h2>Installed builds verify first and restart only with permission.</h2>
+              <div class="check-grid">
+                <article><span>01</span><h3>Automatic checks</h3><p>Enabled by default, update checks use signed metadata published with the GitHub release. You can turn them off in Settings or check manually.</p></article>
+                <article><span>02</span><h3>Transfer-aware install</h3><p>FluxDrop can download a verified update in the background, but installation waits until active transfers finish and you confirm the restart.</p></article>
+                <article><span>03</span><h3>Portable behavior</h3><p>Portable builds never replace themselves. They report the available version and open its GitHub download page.</p></article>
+                <article><span>04</span><h3>SmartScreen remains separate</h3><p>Updater signatures protect update integrity; they do not replace Authenticode signing, so Windows may still show a SmartScreen prompt.</p></article>
+              </div>
             </section>
 
             <section id="still-stuck" data-reveal>

@@ -10,7 +10,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="Read FluxDrop's local transfer security model, v0.3.0 hardening changes, protections, limitations, and vulnerability reporting process."
+      content="Read FluxDrop's local transfer security model, v0.4.0 integrity controls, protections, limitations, and vulnerability reporting process."
     />
     <meta name="theme-color" content="#0d1118" />
     <title>Security - FluxDrop</title>
@@ -55,9 +55,9 @@
             <h1>Security claims you can verify, with limits you can see.</h1>
             <p>
               FluxDrop reduces exposure with direct local transfer, HTTPS, strong random links,
-              short expirations, explicit PC approval, and v0.3.0 hardening around upload scope,
-              token validation, local storage, and client-IP-bound approvals. It also states clearly
-              what self-signed local TLS cannot protect against.
+              short expirations, explicit PC approval, and v0.4.0 integrity controls for resumable
+              downloads, upload batches, private firewall rules, and signed updates. It also states
+              clearly what self-signed local TLS cannot protect against.
             </p>
           </div>
           <div class="security-seal" data-reveal aria-hidden="true">
@@ -103,44 +103,44 @@
         <div class="shell">
           <div class="section-heading split-heading" data-reveal>
             <div>
-              <span class="section-label">v0.3.0 hardening</span>
-              <h2>The newest release closes off avoidable edge cases.</h2>
+              <span class="section-label">v0.4.0 integrity</span>
+              <h2>Reliable transfers without weakening the trust boundary.</h2>
             </div>
             <p>
-              These changes keep the local-only model intact while tightening token handling,
-              browser policy, upload behavior, and history/storage boundaries.
+              These changes keep the local-only model intact while making interrupted downloads,
+              multi-file publication, Windows readiness, and application updates safer to recover.
             </p>
           </div>
           <div class="principles-grid security-update-grid">
             <article data-reveal>
               <span>01</span>
-              <h3>Approval follows the requesting phone</h3>
-              <p>Downloads and uploads approved on the PC are bound to the phone IP that requested them.</p>
+              <h3>Resume requires full byte coverage</h3>
+              <p>Single-use links complete only after merged served intervals cover the entire ordinary file; malformed or unsatisfiable ranges are rejected.</p>
             </article>
             <article data-reveal>
               <span>02</span>
-              <h3>Upload body limits stay scoped</h3>
-              <p>Unlimited streaming applies only to the file upload route; JSON metadata keeps Axum's default cap.</p>
+              <h3>Upload batches publish atomically</h3>
+              <p>Every multipart item must match the approved manifest. Files stay randomized and temporary until the whole batch validates, with rollback on publication failure.</p>
             </article>
             <article data-reveal>
               <span>03</span>
-              <h3>Token probes are stricter</h3>
-              <p>Routes require FluxDrop's exact 27-character URL-safe token shape and malformed upload status checks count toward rate limits.</p>
+              <h3>Firewall repair stays private</h3>
+              <p>Structured checks detect missing, stale, or wrong-profile rules. Elevated repair targets the current executable and Private profile without changing Public access.</p>
             </article>
             <article data-reveal>
               <span>04</span>
-              <h3>Rendered pages are tighter</h3>
-              <p>QR images render through data URIs, transfer pages use a stricter CSP, and desktop WebView policy blocks object, base, and frame injection.</p>
+              <h3>Installed updates are signed</h3>
+              <p>Installed builds verify signed updater artifacts and defer installation during transfers. Portable builds report releases without modifying themselves.</p>
             </article>
             <article data-reveal>
               <span>05</span>
-              <h3>Filenames and archives are safer</h3>
-              <p>Incoming names and generated archive paths sanitize Windows device names and overlong filename components.</p>
+              <h3>Approval follows the requesting phone</h3>
+              <p>Downloads and upload batches approved on the PC remain bound to the phone IP that requested them.</p>
             </article>
             <article data-reveal>
               <span>06</span>
-              <h3>Local records fail safer</h3>
-              <p>Settings and history saves replace files atomically, and CSV export neutralizes spreadsheet formula prefixes in user-controlled fields.</p>
+              <h3>Batch history stays minimal</h3>
+              <p>A received batch creates one aggregate history record with file count and total size, without storing transfer tokens or file contents.</p>
             </article>
           </div>
         </div>
