@@ -1,4 +1,0 @@
-Contact: https://github.com/savxzthc/FluxDrop/security/advisories/new
-Expires: 2027-06-15T00:00:00.000Z
-Preferred-Languages: en
-Policy: https://github.com/savxzthc/FluxDrop/blob/main/SECURITY.md
